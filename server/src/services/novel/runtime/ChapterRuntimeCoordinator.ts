@@ -279,6 +279,8 @@ export class ChapterRuntimeCoordinator {
         },
         markChapterGenerationState: (targetChapterId, generationState) =>
           this.markChapterGenerationState(targetChapterId, generationState),
+        markChapterStatus: (targetChapterId, chapterStatus) =>
+          this.markChapterStatus(targetChapterId, chapterStatus),
       },
       novelId,
       chapterId,
@@ -710,7 +712,7 @@ export class ChapterRuntimeCoordinator {
 
   private async markChapterStatus(
     chapterId: string,
-    chapterStatus: "generating" | "pending_review" | "needs_repair",
+    chapterStatus: "generating" | "pending_review" | "needs_repair" | "completed",
   ): Promise<void> {
     await prisma.chapter.update({
       where: { id: chapterId },

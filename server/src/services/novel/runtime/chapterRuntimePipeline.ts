@@ -74,6 +74,10 @@ interface RunPipelineChapterDeps {
     chapterId: string,
     generationState: "reviewed" | "approved",
   ) => Promise<void>;
+  markChapterStatus: (
+    chapterId: string,
+    chapterStatus: "needs_repair" | "completed",
+  ) => Promise<void>;
 }
 
 const QUALITY_THRESHOLD = { coherence: 80, repetition: 20, engagement: 75 };
@@ -132,6 +136,7 @@ export async function runPipelineChapterWithRuntime(
 
     if (!autoReview) {
       await deps.markChapterGenerationState(chapterId, "approved");
+      await deps.markChapterStatus(chapterId, "completed");
       return {
         reviewExecuted: false,
         pass: true,
@@ -167,6 +172,7 @@ export async function runPipelineChapterWithRuntime(
     pass = isQualityPass(latestResult.runtimePackage.audit.score, qualityThreshold);
     if (pass) {
       await deps.markChapterGenerationState(chapterId, "approved");
+      await deps.markChapterStatus(chapterId, "completed");
       break;
     }
 
@@ -194,6 +200,9 @@ export async function runPipelineChapterWithRuntime(
 
   if (!latestResult) {
     throw new Error("Pipeline chapter runtime did not produce a result.");
+  }
+  if (!pass) {
+    await deps.markChapterStatus(chapterId, "needs_repair");
   }
 
   return {

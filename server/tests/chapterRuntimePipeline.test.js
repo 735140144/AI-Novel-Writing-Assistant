@@ -38,6 +38,7 @@ function createRuntimePackage(overallScore) {
 test("runPipelineChapterWithRuntime skips review and repair when autoReview is disabled", async () => {
   const stages = [];
   const generationStates = [];
+  const chapterStatuses = [];
   const savedDrafts = [];
   let finalizeCalled = false;
 
@@ -73,6 +74,9 @@ test("runPipelineChapterWithRuntime skips review and repair when autoReview is d
       async markChapterGenerationState(_chapterId, generationState) {
         generationStates.push(generationState);
       },
+      async markChapterStatus(_chapterId, chapterStatus) {
+        chapterStatuses.push(chapterStatus);
+      },
     },
     "novel-1",
     "chapter-1",
@@ -94,6 +98,7 @@ test("runPipelineChapterWithRuntime skips review and repair when autoReview is d
     generationState: "drafted",
   }]);
   assert.deepEqual(generationStates, ["approved"]);
+  assert.deepEqual(chapterStatuses, ["completed"]);
   assert.equal(result.reviewExecuted, false);
   assert.equal(result.pass, true);
   assert.equal(result.retryCountUsed, 0);
@@ -144,6 +149,7 @@ test("runPipelineChapterWithRuntime does not save a generated draft twice when w
         };
       },
       async markChapterGenerationState() {},
+      async markChapterStatus() {},
     },
     "novel-1",
     "chapter-1",
@@ -164,6 +170,7 @@ test("runPipelineChapterWithRuntime defaults to a single repair pass before stop
   const finalizeInputs = [];
   const savedDrafts = [];
   const generationStates = [];
+  const chapterStatuses = [];
   let reviewCount = 0;
 
   promptRunner.runTextPrompt = async () => ({
@@ -207,6 +214,9 @@ test("runPipelineChapterWithRuntime defaults to a single repair pass before stop
         async markChapterGenerationState(_chapterId, generationState) {
           generationStates.push(generationState);
         },
+        async markChapterStatus(_chapterId, chapterStatus) {
+          chapterStatuses.push(chapterStatus);
+        },
       },
       "novel-1",
       "chapter-1",
@@ -227,6 +237,7 @@ test("runPipelineChapterWithRuntime defaults to a single repair pass before stop
     assert.equal(result.retryCountUsed, 1);
     assert.equal(result.pass, false);
     assert.deepEqual(generationStates, ["reviewed", "reviewed"]);
+    assert.deepEqual(chapterStatuses, ["needs_repair"]);
     assert.deepEqual(savedDrafts, [
       {
         content: "生成后的正文",
