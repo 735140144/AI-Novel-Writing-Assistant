@@ -21,6 +21,24 @@ export { buildPipelineCurrentItemLabel, buildPipelineStageProgress } from "./pip
 
 const PIPELINE_HEARTBEAT_INTERVAL_MS = 15000;
 
+function resolveAdvanceAfterAutoRepairLimit(input: {
+  explicit?: boolean;
+  controlPolicy?: PipelinePayload["controlPolicy"];
+  autoReview?: boolean;
+  autoRepair?: boolean;
+}): boolean | undefined {
+  if (typeof input.explicit === "boolean") {
+    return input.explicit;
+  }
+  if (
+    input.controlPolicy?.kickoffMode !== "director_start"
+    || input.controlPolicy.advanceMode !== "auto_to_execution"
+  ) {
+    return undefined;
+  }
+  return (input.autoReview ?? true) && (input.autoRepair ?? true) ? true : undefined;
+}
+
 function buildSkipCompletedChapterWhere(): Prisma.ChapterWhereInput {
   return {
     NOT: {
@@ -278,6 +296,7 @@ export class NovelCorePipelineService {
       this.schedulePipelineExecution(job.id, job.novelId, {
       startOrder: job.startOrder,
       endOrder: job.endOrder,
+      controlPolicy: payload.controlPolicy,
       workflowTaskId: payload.workflowTaskId,
       taskStyleProfileId: payload.taskStyleProfileId,
       maxRetries: job.maxRetries,
@@ -287,6 +306,12 @@ export class NovelCorePipelineService {
       skipCompleted: job.skipCompleted ?? payload.skipCompleted,
       qualityThreshold: job.qualityThreshold ?? payload.qualityThreshold,
       repairMode: job.repairMode ?? payload.repairMode,
+      advanceAfterAutoRepairLimit: resolveAdvanceAfterAutoRepairLimit({
+        explicit: payload.advanceAfterAutoRepairLimit,
+        controlPolicy: payload.controlPolicy,
+        autoReview: job.autoReview ?? payload.autoReview,
+        autoRepair: job.autoRepair ?? payload.autoRepair,
+      }),
       provider: payload.provider,
       model: payload.model,
       temperature: payload.temperature,
@@ -380,6 +405,12 @@ export class NovelCorePipelineService {
             skipCompleted: options.skipCompleted ?? true,
             qualityThreshold: options.qualityThreshold,
             repairMode: options.repairMode ?? "light_repair",
+            advanceAfterAutoRepairLimit: resolveAdvanceAfterAutoRepairLimit({
+              explicit: options.advanceAfterAutoRepairLimit,
+              controlPolicy: options.controlPolicy,
+              autoReview: options.autoReview,
+              autoRepair: options.autoRepair,
+            }),
           }),
         },
       });
@@ -423,6 +454,7 @@ export class NovelCorePipelineService {
     return this.startPipelineJob(job.novelId, {
       startOrder: job.startOrder,
       endOrder: job.endOrder,
+      controlPolicy: payload.controlPolicy,
       workflowTaskId: payload.workflowTaskId,
       taskStyleProfileId: payload.taskStyleProfileId,
       maxRetries: job.maxRetries,
@@ -432,6 +464,12 @@ export class NovelCorePipelineService {
       skipCompleted: job.skipCompleted ?? payload.skipCompleted,
       qualityThreshold: job.qualityThreshold ?? payload.qualityThreshold,
       repairMode: job.repairMode ?? payload.repairMode,
+      advanceAfterAutoRepairLimit: resolveAdvanceAfterAutoRepairLimit({
+        explicit: payload.advanceAfterAutoRepairLimit,
+        controlPolicy: payload.controlPolicy,
+        autoReview: job.autoReview ?? payload.autoReview,
+        autoRepair: job.autoRepair ?? payload.autoRepair,
+      }),
       provider: payload.provider,
       model: payload.model,
       temperature: payload.temperature,
@@ -549,20 +587,29 @@ export class NovelCorePipelineService {
       },
     });
     const persistedPayload = this.parsePipelinePayload(existingJob?.payload);
+    const controlPolicy = persistedPayload.controlPolicy ?? options.controlPolicy;
+    const autoReview = persistedPayload.autoReview ?? options.autoReview ?? true;
+    const autoRepair = persistedPayload.autoRepair ?? options.autoRepair ?? true;
     const runtimePayload: PipelinePayload = {
       provider: persistedPayload.provider ?? options.provider,
       model: persistedPayload.model ?? options.model,
       temperature: persistedPayload.temperature ?? options.temperature,
-      controlPolicy: persistedPayload.controlPolicy ?? options.controlPolicy,
+      controlPolicy,
       workflowTaskId: persistedPayload.workflowTaskId ?? options.workflowTaskId,
       taskStyleProfileId: persistedPayload.taskStyleProfileId ?? options.taskStyleProfileId,
       maxRetries: persistedPayload.maxRetries ?? options.maxRetries ?? 1,
       runMode: persistedPayload.runMode ?? options.runMode ?? "fast",
-      autoReview: persistedPayload.autoReview ?? options.autoReview ?? true,
-      autoRepair: persistedPayload.autoRepair ?? options.autoRepair ?? true,
+      autoReview,
+      autoRepair,
       skipCompleted: persistedPayload.skipCompleted ?? options.skipCompleted ?? true,
       qualityThreshold: persistedPayload.qualityThreshold ?? options.qualityThreshold,
       repairMode: persistedPayload.repairMode ?? options.repairMode ?? "light_repair",
+      advanceAfterAutoRepairLimit: resolveAdvanceAfterAutoRepairLimit({
+        explicit: persistedPayload.advanceAfterAutoRepairLimit ?? options.advanceAfterAutoRepairLimit,
+        controlPolicy,
+        autoReview,
+        autoRepair,
+      }),
     };
     let totalRetryCount = Math.max(existingJob?.retryCount ?? 0, 0);
     const qualityAlertDetails = [...(persistedPayload.qualityAlertDetails ?? [])];
@@ -685,6 +732,7 @@ export class NovelCorePipelineService {
               autoRepair: runtimePayload.autoRepair,
               qualityThreshold,
               repairMode: runtimePayload.repairMode,
+              advanceAfterAutoRepairLimit: runtimePayload.advanceAfterAutoRepairLimit,
             },
             {
               onCheckCancelled: () => this.ensurePipelineNotCancelled(jobId),

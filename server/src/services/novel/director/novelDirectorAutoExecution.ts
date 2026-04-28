@@ -229,7 +229,7 @@ export function isDirectorAutoExecutionChapterProcessed(chapter: DirectorAutoExe
     return true;
   }
   if (chapter.chapterStatus === "needs_repair") {
-    return false;
+    return chapter.generationState === "repaired";
   }
   if (chapter.chapterStatus === "pending_review") {
     return true;
@@ -385,6 +385,7 @@ export function buildDirectorAutoExecutionPipelineOptions(input: {
     skipCompleted: true,
     qualityThreshold: 75,
     repairMode: "light_repair" as const,
+    advanceAfterAutoRepairLimit: autoReview && (input.autoRepair ?? true),
     workflowTaskId: input.workflowTaskId,
     taskStyleProfileId: input.taskStyleProfileId,
   };

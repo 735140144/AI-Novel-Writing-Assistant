@@ -210,6 +210,9 @@ export function parsePipelinePayload(payload: string | null | undefined): Pipeli
       autoRepair: typeof parsed.autoRepair === "boolean" ? parsed.autoRepair : undefined,
       skipCompleted: typeof parsed.skipCompleted === "boolean" ? parsed.skipCompleted : undefined,
       qualityThreshold: typeof parsed.qualityThreshold === "number" ? parsed.qualityThreshold : undefined,
+      advanceAfterAutoRepairLimit: typeof parsed.advanceAfterAutoRepairLimit === "boolean"
+        ? parsed.advanceAfterAutoRepairLimit
+        : undefined,
       repairMode:
         parsed.repairMode === "detect_only"
         || parsed.repairMode === "light_repair"
@@ -242,6 +245,9 @@ export function stringifyPipelinePayload(input: PipelinePayload): string {
     autoRepair: input.autoRepair ?? true,
     skipCompleted: input.skipCompleted ?? true,
     qualityThreshold: input.qualityThreshold ?? null,
+    ...(typeof input.advanceAfterAutoRepairLimit === "boolean"
+      ? { advanceAfterAutoRepairLimit: input.advanceAfterAutoRepairLimit }
+      : {}),
     repairMode: input.repairMode ?? "light_repair",
     ...(qualityAlertDetails.length > 0 ? { qualityAlertDetails } : {}),
     ...(backgroundSync?.activities?.length ? { backgroundSync } : {}),

@@ -82,6 +82,7 @@ interface NovelDirectorAutoExecutionNovelPort {
     skipCompleted: boolean;
     qualityThreshold: number;
     repairMode: "light_repair";
+    advanceAfterAutoRepairLimit?: boolean;
   }): Promise<{ id: string; status: PipelineJobStatus }>;
   findActivePipelineJobForRange(
     novelId: string,

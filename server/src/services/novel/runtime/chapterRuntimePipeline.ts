@@ -18,6 +18,7 @@ export interface PipelineRuntimeInput extends ChapterRuntimeRequestInput {
   auditMode?: "light" | "full" | "repair_only";
   qualityThreshold?: number;
   repairMode?: "detect_only" | "light_repair" | "heavy_repair" | "continuity_only" | "character_only" | "ending_only";
+  advanceAfterAutoRepairLimit?: boolean;
 }
 
 export interface PipelineRuntimeResult {
@@ -102,6 +103,7 @@ export async function runPipelineChapterWithRuntime(
     autoRepair = true,
     qualityThreshold = 75,
     repairMode = "light_repair",
+    advanceAfterAutoRepairLimit = false,
     ...requestInput
   } = options;
   const request = deps.validateRequest(requestInput);
@@ -196,6 +198,9 @@ export async function runPipelineChapterWithRuntime(
     });
     retryCountUsed += 1;
     await deps.saveDraftAndArtifacts(novelId, chapterId, content, "repaired");
+    if (advanceAfterAutoRepairLimit && retryCountUsed >= maxRetries) {
+      break;
+    }
   }
 
   if (!latestResult) {

@@ -58,12 +58,14 @@ test("pipeline payload keeps omitted model settings route-following", () => {
     skipCompleted: true,
     qualityThreshold: 75,
     repairMode: "light_repair",
+    advanceAfterAutoRepairLimit: true,
   }));
 
   assert.equal(payload.provider, undefined);
   assert.equal(payload.model, undefined);
   assert.equal(payload.temperature, undefined);
   assert.equal(payload.workflowTaskId, "workflow-route");
+  assert.equal(payload.advanceAfterAutoRepairLimit, true);
 });
 
 test("executePipeline preserves route-following model options for chapter runtime", async () => {
@@ -368,6 +370,7 @@ test("executePipeline keeps director control policy and suppresses replan notice
       advanceMode: "auto_to_execution",
       reviewCheckpoints: ["chapter_batch"],
     });
+    assert.equal(capturedRuntimeOptions.advanceAfterAutoRepairLimit, true);
     const finalUpdate = updates[updates.length - 1];
     assert.equal(finalUpdate.data.status, "succeeded");
     const finalPayload = JSON.parse(finalUpdate.data.payload);
