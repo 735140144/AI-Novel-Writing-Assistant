@@ -339,6 +339,43 @@ test("healAutoDirectorTaskState marks running auto director tasks recoverable wh
   }
 });
 
+test("listRecoverableAutoDirectorTasks keeps item key for startup memory gating", async () => {
+  const originals = {
+    findMany: prisma.novelWorkflowTask.findMany,
+    archiveFindMany: prisma.taskCenterArchive.findMany,
+  };
+
+  prisma.novelWorkflowTask.findMany = async () => [
+    {
+      id: "task-detail",
+      status: "running",
+      lane: "auto_director",
+      currentItemKey: "chapter_detail_bundle",
+      pendingManualRecovery: false,
+      cancelRequestedAt: null,
+      heartbeatAt: new Date("2026-04-29T10:00:00.000Z"),
+      updatedAt: new Date("2026-04-29T10:00:00.000Z"),
+    },
+  ];
+  prisma.taskCenterArchive.findMany = async () => [];
+
+  try {
+    const service = new NovelWorkflowService();
+    const rows = await service.listRecoverableAutoDirectorTasks();
+
+    assert.deepEqual(rows, [
+      {
+        id: "task-detail",
+        status: "running",
+        currentItemKey: "chapter_detail_bundle",
+      },
+    ]);
+  } finally {
+    prisma.novelWorkflowTask.findMany = originals.findMany;
+    prisma.taskCenterArchive.findMany = originals.archiveFindMany;
+  }
+});
+
 test("healAutoDirectorTaskState promotes advanced queued auto director tasks back to running and clears stale candidate checkpoints", async () => {
   const originals = {
     findUnique: prisma.novelWorkflowTask.findUnique,

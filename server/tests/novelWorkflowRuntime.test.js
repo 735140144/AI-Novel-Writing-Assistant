@@ -62,6 +62,41 @@ test("resumePendingAutoDirectorTasks continues queued tasks without marking them
   ]);
 });
 
+test("resumePendingAutoDirectorTasks does not start multiple high-memory director tasks at startup", async () => {
+  const calls = [];
+  const runtimeService = new NovelWorkflowRuntimeService(
+    {
+      async listRecoverableAutoDirectorTasks() {
+        return [
+          { id: "task-structured", status: "running", currentItemKey: "chapter_detail_bundle" },
+          { id: "task-execution", status: "running", currentItemKey: "chapter_execution" },
+          { id: "task-candidate", status: "queued", currentItemKey: "candidate_generation" },
+        ];
+      },
+      async requeueTaskForRecovery(taskId, message) {
+        calls.push(["requeue", taskId, message]);
+      },
+      async markTaskFailed(taskId, message) {
+        calls.push(["failed", taskId, message]);
+      },
+    },
+    {
+      async continueTask(taskId, input) {
+        calls.push(["continue", taskId, input?.batchAlreadyStartedCount ?? null]);
+      },
+    },
+  );
+
+  await runtimeService.resumePendingAutoDirectorTasks();
+
+  assert.deepEqual(calls, [
+    ["requeue", "task-structured", "自动导演任务因服务重启中断，正在尝试恢复。"],
+    ["continue", "task-structured", 0],
+    ["requeue", "task-execution", "服务重启后检测到多个高内存自动导演任务，已暂停等待手动继续。"],
+    ["continue", "task-candidate", null],
+  ]);
+});
+
 test("resumePendingAutoDirectorTasks marks failed when recovery throws", async () => {
   const calls = [];
   const runtimeService = new NovelWorkflowRuntimeService(

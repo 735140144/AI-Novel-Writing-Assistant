@@ -520,6 +520,7 @@ export class NovelWorkflowService {
       .map((row) => ({
         id: row.id,
         status: row.status,
+        currentItemKey: row.currentItemKey,
         ...(options.includeStaleRunningFlag
           ? { stale: isStaleAutoDirectorRunningTask(row) }
           : {}),
