@@ -14,6 +14,7 @@ import {
   getArchivedTaskIds,
   isTaskArchived,
 } from "../taskArchive";
+import { resolveTaskStatusesForList } from "../taskCenter.shared";
 
 export class AgentRunTaskAdapter {
   toSummary(item: {
@@ -86,9 +87,11 @@ export class AgentRunTaskAdapter {
 
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
+    const statuses = resolveTaskStatusesForList(input.status, input.includeFinished);
     const archivedIds = await getArchivedTaskIds("agent_run");
     const rows = await prisma.agentRun.findMany({
       where: {
@@ -99,7 +102,7 @@ export class AgentRunTaskAdapter {
             },
           }
           : {}),
-        ...(input.status ? { status: input.status as AgentRunStatus } : {}),
+        ...(statuses ? { status: { in: statuses as AgentRunStatus[] } } : {}),
         ...(input.keyword
           ? {
             OR: [

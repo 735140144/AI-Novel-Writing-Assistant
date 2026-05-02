@@ -21,6 +21,7 @@ const listQuerySchema = z.object({
   kind: kindSchema.optional(),
   status: statusSchema.optional(),
   keyword: z.string().trim().optional(),
+  includeFinished: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().trim().optional(),
 });
@@ -28,6 +29,10 @@ const listQuerySchema = z.object({
 const taskParamsSchema = z.object({
   kind: kindSchema,
   id: z.string().trim().min(1),
+});
+
+const archiveBatchBodySchema = z.object({
+  items: z.array(taskParamsSchema).min(1).max(100),
 });
 
 const retryBodySchema = z.object({
@@ -169,6 +174,7 @@ router.get("/", validate({ query: listQuerySchema }), async (req, res, next) => 
       kind: query.kind as TaskKind | undefined,
       status: query.status as TaskStatus | undefined,
       keyword: query.keyword,
+      includeFinished: query.includeFinished,
       limit: query.limit,
       cursor: query.cursor,
     });
@@ -176,6 +182,20 @@ router.get("/", validate({ query: listQuerySchema }), async (req, res, next) => 
       success: true,
       data,
       message: "Tasks loaded.",
+    } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/archive-batch", validate({ body: archiveBatchBodySchema }), async (req, res, next) => {
+  try {
+    const body = req.body as z.infer<typeof archiveBatchBodySchema>;
+    const data = await taskCenterService.archiveTasks(body.items);
+    res.status(200).json({
+      success: true,
+      data,
+      message: "Tasks archived.",
     } satisfies ApiResponse<typeof data>);
   } catch (error) {
     next(error);

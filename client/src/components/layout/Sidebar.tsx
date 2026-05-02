@@ -101,14 +101,17 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     queryKey: queryKeys.autoDirectorFollowUps.overview,
     queryFn: getAutoDirectorFollowUpOverview,
     refetchInterval: (query) => {
-      const totalCount = query.state.data?.data?.totalCount ?? 0;
+      const countersBySection = query.state.data?.data?.countersBySection;
+      const totalCount = (countersBySection?.pending ?? 0) + (countersBySection?.exception ?? 0);
       return totalCount > 0 ? 4000 : false;
     },
   });
 
   const runningTaskCount = taskQuery.data?.data?.runningCount ?? 0;
   const failedTaskCount = taskQuery.data?.data?.failedCount ?? 0;
-  const autoDirectorFollowUpCount = autoDirectorFollowUpQuery.data?.data?.totalCount ?? 0;
+  const pendingFollowUpCount = autoDirectorFollowUpQuery.data?.data?.countersBySection?.pending ?? 0;
+  const exceptionFollowUpCount = autoDirectorFollowUpQuery.data?.data?.countersBySection?.exception ?? 0;
+  const autoDirectorFollowUpCount = pendingFollowUpCount + exceptionFollowUpCount;
   const knowledgeDocuments = knowledgeQuery.data?.data ?? [];
   const failedIndexCount = knowledgeDocuments.filter((item) => item.latestIndexStatus === "failed").length;
 

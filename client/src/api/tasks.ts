@@ -19,6 +19,7 @@ export async function listTasks(params?: {
   kind?: TaskKind;
   status?: TaskStatus;
   keyword?: string;
+  includeFinished?: boolean;
   limit?: number;
   cursor?: string;
 }) {
@@ -86,6 +87,15 @@ export async function cancelTask(kind: TaskKind, id: string) {
 
 export async function archiveTask(kind: TaskKind, id: string) {
   const { data } = await apiClient.post<ApiResponse<UnifiedTaskDetail | null>>(`/tasks/${kind}/${id}/archive`, {});
+  return data;
+}
+
+export async function archiveTasks(items: Array<{ kind: TaskKind; id: string }>) {
+  const { data } = await apiClient.post<ApiResponse<{
+    archivedCount: number;
+    failedCount: number;
+    items: Array<{ kind: TaskKind; id: string; success: boolean; message: string }>;
+  }>>("/tasks/archive-batch", { items });
   return data;
 }
 

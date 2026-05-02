@@ -7,7 +7,7 @@ import { getLlmRepairSessionLogPath, getLlmSessionLogPath } from "../../../llm/s
 import {
   buildSteps,
   STYLE_EXTRACTION_TASK_STEPS,
-  toLegacyTaskStatus,
+  resolveLegacyTaskStatusesForList,
 } from "../taskCenter.shared";
 import {
   buildTaskRecoveryHint,
@@ -29,18 +29,19 @@ function buildTaskTitle(name: string): string {
 export class StyleExtractionTaskAdapter {
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
-    if (input.status === "waiting_approval") {
+    const statuses = resolveLegacyTaskStatusesForList(input.status, input.includeFinished);
+    if (statuses && statuses.length === 0) {
       return [];
     }
-    const status = toLegacyTaskStatus(input.status);
     const archivedIds = await getArchivedTaskIds("style_extraction");
     const rows = await prisma.styleExtractionTask.findMany({
       where: {
         ...(archivedIds.length ? { id: { notIn: archivedIds } } : {}),
-        ...(status ? { status } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
         ...(input.keyword
           ? {
               OR: [

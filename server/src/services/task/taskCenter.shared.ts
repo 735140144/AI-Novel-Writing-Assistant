@@ -8,6 +8,7 @@ export interface ListTasksFilters {
   kind?: "book_analysis" | "novel_pipeline" | "knowledge_document" | "image_generation" | "agent_run" | "novel_workflow" | "style_extraction";
   status?: TaskStatus;
   keyword?: string;
+  includeFinished?: boolean;
   limit?: number;
   cursor?: string;
 }
@@ -26,6 +27,19 @@ export const STATUS_RANK: Record<TaskStatus, number> = {
   cancelled: 4,
   succeeded: 5,
 };
+
+const DEFAULT_VISIBLE_TASK_STATUSES: TaskStatus[] = [
+  "queued",
+  "running",
+  "waiting_approval",
+  "failed",
+];
+
+const DEFAULT_VISIBLE_LEGACY_TASK_STATUSES: Array<Exclude<TaskStatus, "waiting_approval">> = [
+  "queued",
+  "running",
+  "failed",
+];
 
 export const BOOK_ANALYSIS_STEPS = [
   { key: "queued", label: "排队" },
@@ -207,6 +221,35 @@ export function toLegacyTaskStatus(
     return undefined;
   }
   return status;
+}
+
+export function resolveTaskStatusesForList(
+  status?: TaskStatus,
+  includeFinished = false,
+): TaskStatus[] | undefined {
+  if (status) {
+    return [status];
+  }
+  if (includeFinished) {
+    return undefined;
+  }
+  return [...DEFAULT_VISIBLE_TASK_STATUSES];
+}
+
+export function resolveLegacyTaskStatusesForList(
+  status?: TaskStatus,
+  includeFinished = false,
+): Array<Exclude<TaskStatus, "waiting_approval">> | undefined {
+  if (status === "waiting_approval") {
+    return [];
+  }
+  if (status) {
+    return [status];
+  }
+  if (includeFinished) {
+    return undefined;
+  }
+  return [...DEFAULT_VISIBLE_LEGACY_TASK_STATUSES];
 }
 
 export function mapBookStatusToTaskStatus(status: string): TaskStatus | null {

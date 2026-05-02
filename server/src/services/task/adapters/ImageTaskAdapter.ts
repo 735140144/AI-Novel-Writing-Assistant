@@ -2,7 +2,7 @@ import type { TaskStatus, UnifiedTaskDetail, UnifiedTaskSummary } from "@ai-nove
 import { prisma } from "../../../db/prisma";
 import { AppError } from "../../../middleware/errorHandler";
 import { imageGenerationService } from "../../image/ImageGenerationService";
-import { IMAGE_TASK_STEPS, buildSteps, toLegacyTaskStatus } from "../taskCenter.shared";
+import { IMAGE_TASK_STEPS, buildSteps, resolveLegacyTaskStatusesForList } from "../taskCenter.shared";
 import {
   buildTaskRecoveryHint,
   isArchivableTaskStatus,
@@ -17,13 +17,14 @@ import {
 export class ImageTaskAdapter {
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
-    if (input.status === "waiting_approval") {
+    const statuses = resolveLegacyTaskStatusesForList(input.status, input.includeFinished);
+    if (statuses && statuses.length === 0) {
       return [];
     }
-    const status = toLegacyTaskStatus(input.status);
     const archivedIds = await getArchivedTaskIds("image_generation");
     const rows = await prisma.imageGenerationTask.findMany({
       where: {
@@ -34,7 +35,7 @@ export class ImageTaskAdapter {
             },
           }
           : {}),
-        ...(status ? { status } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
         ...(input.keyword
           ? {
             OR: [

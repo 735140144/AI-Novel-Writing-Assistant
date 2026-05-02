@@ -21,7 +21,7 @@ import {
 import {
   NOVEL_PIPELINE_STEPS,
   buildSteps,
-  toLegacyTaskStatus,
+  resolveLegacyTaskStatusesForList,
 } from "../taskCenter.shared";
 
 type PipelineRow = {
@@ -117,13 +117,14 @@ export class PipelineTaskAdapter {
 
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
-    if (input.status === "waiting_approval") {
+    const statuses = resolveLegacyTaskStatusesForList(input.status, input.includeFinished);
+    if (statuses && statuses.length === 0) {
       return [];
     }
-    const status = toLegacyTaskStatus(input.status);
     const archivedIds = await getArchivedTaskIds("novel_pipeline");
     const rows = await prisma.generationJob.findMany({
       where: {
@@ -134,7 +135,7 @@ export class PipelineTaskAdapter {
             },
           }
           : {}),
-        ...(status ? { status } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
         ...(input.keyword
           ? {
             OR: [

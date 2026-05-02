@@ -204,29 +204,30 @@ export class TaskCenterService {
     const sourceTake = Math.max(60, limit * 4);
     const keyword = normalizeKeyword(filters.keyword);
     const cursorPayload = parseCursor(filters.cursor);
+    const includeFinished = filters.includeFinished === true;
 
     const [bookTasks, novelTasks, knowledgeTasks, imageTasks, agentTasks, workflowTasks, styleExtractionTasks] = await Promise.all([
       filters.kind && filters.kind !== "book_analysis"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.bookAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.bookAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "novel_pipeline"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.pipelineAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.pipelineAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "knowledge_document"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.knowledgeAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.knowledgeAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "image_generation"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.imageAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.imageAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "agent_run"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.agentAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.agentAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "novel_workflow"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.workflowAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.workflowAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
       filters.kind && filters.kind !== "style_extraction"
         ? Promise.resolve<UnifiedTaskSummary[]>([])
-        : this.styleExtractionAdapter.list({ status: filters.status, keyword, take: sourceTake }),
+        : this.styleExtractionAdapter.list({ status: filters.status, includeFinished, keyword, take: sourceTake }),
     ]);
 
     const linkedPipelineIds = filters.kind === "novel_pipeline"
@@ -358,6 +359,37 @@ export class TaskCenterService {
       return this.styleExtractionAdapter.archive(id);
     }
     throw new AppError(`Unsupported task kind: ${kind}`, 400);
+  }
+
+  async archiveTasks(items: Array<{ kind: TaskKind; id: string }>): Promise<{
+    archivedCount: number;
+    failedCount: number;
+    items: Array<{ kind: TaskKind; id: string; success: boolean; message: string }>;
+  }> {
+    const results = await Promise.all(items.map(async (item) => {
+      try {
+        await this.archiveTask(item.kind, item.id);
+        return {
+          ...item,
+          success: true,
+          message: "Task archived.",
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Task archive failed.";
+        return {
+          ...item,
+          success: false,
+          message,
+        };
+      }
+    }));
+
+    const archivedCount = results.filter((item) => item.success).length;
+    return {
+      archivedCount,
+      failedCount: results.length - archivedCount,
+      items: results,
+    };
   }
 }
 

@@ -48,6 +48,7 @@ import {
 import { buildNovelWorkflowDetailSteps } from "../novelWorkflowDetailSteps";
 import { buildWorkflowExplainability } from "../novelWorkflowExplainability";
 import { buildNovelWorkflowNextActionLabel } from "../novelWorkflowTaskSummary";
+import { resolveTaskStatusesForList } from "../taskCenter.shared";
 
 function buildOwnerLabel(row: {
   novel?: { title: string } | null;
@@ -371,9 +372,11 @@ export class NovelWorkflowTaskAdapter {
 
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
+    const statuses = resolveTaskStatusesForList(input.status, input.includeFinished);
     const archivedIds = await getArchivedTaskIds("novel_workflow");
     const rows = await prisma.novelWorkflowTask.findMany({
       where: {
@@ -385,7 +388,7 @@ export class NovelWorkflowTaskAdapter {
           }
           : {}),
         lane: "auto_director",
-        ...(input.status ? { status: input.status } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
         ...(input.keyword
           ? {
             OR: [

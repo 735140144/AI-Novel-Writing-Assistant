@@ -16,7 +16,7 @@ import {
 import {
   KNOWLEDGE_DOCUMENT_STEPS,
   buildSteps,
-  toLegacyTaskStatus,
+  resolveLegacyTaskStatusesForList,
 } from "../taskCenter.shared";
 
 interface KnowledgeDocumentRecord {
@@ -89,14 +89,14 @@ function matchesKeyword(
 export class KnowledgeTaskAdapter {
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
-    if (input.status === "waiting_approval") {
+    const statuses = resolveLegacyTaskStatusesForList(input.status, input.includeFinished);
+    if (statuses && statuses.length === 0) {
       return [];
     }
-
-    const status = toLegacyTaskStatus(input.status);
     const archivedIds = await getArchivedTaskIds("knowledge_document");
     const rows = await prisma.ragIndexJob.findMany({
       where: {
@@ -108,7 +108,7 @@ export class KnowledgeTaskAdapter {
             },
           }
           : {}),
-        ...(status ? { status } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
       },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take: input.keyword ? Math.max(input.take * 3, input.take) : input.take,

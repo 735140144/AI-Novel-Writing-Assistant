@@ -1,19 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  AutoDirectorAction,
-  AutoDirectorMutationActionCode,
-} from "@ai-novel/shared/types/autoDirectorFollowUp";
+import type { AutoDirectorMutationActionCode } from "@ai-novel/shared/types/autoDirectorFollowUp";
 import type { TaskKind, TaskStatus } from "@ai-novel/shared/types/task";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import type {
-  NovelWorkflowMilestone,
-  NovelWorkflowMilestoneType,
-  NovelWorkflowResumeTarget,
-} from "@ai-novel/shared/types/novelWorkflow";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { continueNovelWorkflow } from "@/api/novelWorkflow";
 import {
   archiveTask,
+  archiveTasks,
   cancelTask,
   executeAutoDirectorFollowUpAction,
   getAutoDirectorFollowUpDetail,
@@ -22,12 +15,7 @@ import {
   retryTask,
 } from "@/api/tasks";
 import { queryKeys } from "@/api/queryKeys";
-import LLMSelector, { type LLMSelectorValue } from "@/components/common/LLMSelector";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import OpenInCreativeHubButton from "@/components/creativeHub/OpenInCreativeHubButton";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import type { LLMSelectorValue } from "@/components/common/LLMSelector";
 import { toast } from "@/components/ui/toast";
 import { resolveWorkflowContinuationFeedback } from "@/lib/novelWorkflowContinuation";
 import { useDirectorChapterTitleRepair } from "@/hooks/useDirectorChapterTitleRepair";
@@ -40,188 +28,16 @@ import {
 } from "@/lib/directorTaskNotice";
 import { canContinueFront10AutoExecution, getCandidateSelectionLink, requiresCandidateSelection } from "@/lib/novelWorkflowTaskUi";
 import { useLLMStore } from "@/store/llmStore";
-
-const ACTIVE_STATUSES = new Set<TaskStatus>(["queued", "running", "waiting_approval"]);
-const ANOMALY_STATUSES = new Set<TaskStatus>(["failed", "cancelled"]);
-const ARCHIVABLE_STATUSES = new Set<TaskStatus>(["succeeded", "failed", "cancelled"]);
-
-function getTaskListPriority(status: TaskStatus): number {
-  return status === "failed" ? 0 : 1;
-}
-
-type TaskSortMode = "default" | "updated_desc" | "updated_asc" | "heartbeat_desc" | "heartbeat_asc";
-
-function getTimestamp(value: string | null | undefined): number {
-  if (!value) {
-    return Number.NaN;
-  }
-  return new Date(value).getTime();
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "暂无";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "暂无";
-  }
-  return date.toLocaleString();
-}
-
-function formatTokenCount(value: number | null | undefined): string {
-  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Math.round(value ?? 0)));
-}
-
-function formatKind(kind: TaskKind): string {
-  if (kind === "book_analysis") {
-    return "拆书分析";
-  }
-  if (kind === "novel_workflow") {
-    return "小说创作";
-  }
-  if (kind === "novel_pipeline") {
-    return "小说流水线";
-  }
-  if (kind === "knowledge_document") {
-    return "知识库索引";
-  }
-  if (kind === "style_extraction") {
-    return "写法提取";
-  }
-  if (kind === "agent_run") {
-    return "Agent 运行";
-  }
-  return "图片生成";
-}
-
-function formatCheckpoint(checkpoint: NovelWorkflowMilestoneType | null | undefined, scopeLabel?: string | null): string {
-  const resolvedScopeLabel = scopeLabel?.trim() || "前 10 章";
-  if (checkpoint === "rewrite_snapshot_created") {
-    return "重写前备份已创建";
-  }
-  if (checkpoint === "candidate_selection_required") {
-    return "等待确认书级方向";
-  }
-  if (checkpoint === "book_contract_ready") {
-    return "Book Contract 已就绪";
-  }
-  if (checkpoint === "character_setup_required") {
-    return "角色准备待审核";
-  }
-  if (checkpoint === "volume_strategy_ready") {
-    return "卷战略已就绪";
-  }
-  if (checkpoint === "front10_ready") {
-    return `${resolvedScopeLabel}可开写`;
-  }
-  if (checkpoint === "chapter_batch_ready") {
-    return `${resolvedScopeLabel}自动执行已暂停`;
-  }
-  if (checkpoint === "replan_required") {
-    return "需要重规划";
-  }
-  if (checkpoint === "workflow_completed") {
-    return "主流程完成";
-  }
-  return "暂无";
-}
-
-function formatResumeTarget(target: NovelWorkflowResumeTarget | null | undefined): string {
-  if (!target) {
-    return "暂无";
-  }
-  if (target.route === "/novels/create") {
-    return target.mode === "director" ? "创建页 / AI 自动导演" : "创建页";
-  }
-  if (target.stage === "story_macro") {
-    return "小说编辑页 / 故事宏观规划";
-  }
-  if (target.stage === "character") {
-    return "小说编辑页 / 角色准备";
-  }
-  if (target.stage === "outline") {
-    return "小说编辑页 / 卷战略";
-  }
-  if (target.stage === "structured") {
-    return "小说编辑页 / 节奏拆章";
-  }
-  if (target.stage === "chapter") {
-    return "小说编辑页 / 章节执行";
-  }
-  if (target.stage === "pipeline") {
-    return "小说编辑页 / 质量修复";
-  }
-  return "小说编辑页 / 项目设定";
-}
-
-function formatStatus(status: TaskStatus): string {
-  if (status === "queued") {
-    return "排队中";
-  }
-  if (status === "running") {
-    return "运行中";
-  }
-  if (status === "waiting_approval") {
-    return "等待审批";
-  }
-  if (status === "succeeded") {
-    return "已完成";
-  }
-  if (status === "failed") {
-    return "失败";
-  }
-  return "已取消";
-}
-
-function toStatusVariant(status: TaskStatus): "default" | "outline" | "secondary" | "destructive" {
-  if (status === "running") {
-    return "default";
-  }
-  if (status === "waiting_approval") {
-    return "secondary";
-  }
-  if (status === "queued") {
-    return "secondary";
-  }
-  if (status === "failed") {
-    return "destructive";
-  }
-  return "outline";
-}
-
-function serializeListParams(input: {
-  kind: TaskKind | "";
-  status: TaskStatus | "";
-  keyword: string;
-}): string {
-  return JSON.stringify({
-    kind: input.kind || null,
-    status: input.status || null,
-    keyword: input.keyword.trim() || null,
-  });
-}
-
-function createIdempotencyKey(taskId: string, actionCode: string): string {
-  if (typeof globalThis.crypto?.randomUUID === "function") {
-    return `${taskId}:${actionCode}:${globalThis.crypto.randomUUID()}`;
-  }
-  return `${taskId}:${actionCode}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-}
-
-function formatFollowUpPriority(priority: "P0" | "P1" | "P2"): string {
-  if (priority === "P0") {
-    return "P0 立即处理";
-  }
-  if (priority === "P1") {
-    return "P1 尽快处理";
-  }
-  return "P2 可稍后处理";
-}
-
-function followUpActionVariant(action: AutoDirectorAction): "default" | "outline" {
-  return action.kind === "navigation" || action.riskLevel !== "low" ? "outline" : "default";
-}
+import TaskCenterDetailPanel from "./TaskCenterDetailPanel";
+import { TaskCenterFiltersCard, TaskCenterListCard, TaskCenterSummaryCards } from "./TaskCenterPanels";
+import {
+  ACTIVE_STATUSES,
+  buildVisibleTaskRows,
+  createIdempotencyKey,
+  handleTaskFollowUpAction,
+  serializeListParams,
+  type TaskSortMode,
+} from "./taskCenterShared";
 
 export default function TaskCenterPage() {
   const navigate = useNavigate();
@@ -241,7 +57,8 @@ export default function TaskCenterPage() {
 
   const selectedKind = (searchParams.get("kind") as TaskKind | null) ?? null;
   const selectedId = searchParams.get("id");
-  const listParamsKey = serializeListParams({ kind, status, keyword });
+  const includeFinished = Boolean(status);
+  const listParamsKey = serializeListParams({ kind, status, keyword, includeFinished });
 
   const listQuery = useQuery({
     queryKey: queryKeys.tasks.list(listParamsKey),
@@ -250,6 +67,7 @@ export default function TaskCenterPage() {
         kind: kind || undefined,
         status: status || undefined,
         keyword: keyword.trim() || undefined,
+        includeFinished: status ? undefined : false,
         limit: 80,
       }),
     refetchInterval: (query) => {
@@ -260,33 +78,7 @@ export default function TaskCenterPage() {
 
   const allRows = listQuery.data?.data?.items ?? [];
   const visibleRows = useMemo(
-    () =>
-      (onlyAnomaly ? allRows.filter((item) => ANOMALY_STATUSES.has(item.status)) : allRows)
-        .map((item, index) => ({ item, index }))
-        .sort((left, right) => {
-          if (sortMode !== "default") {
-            const leftTime = sortMode.startsWith("heartbeat")
-              ? getTimestamp(left.item.heartbeatAt)
-              : getTimestamp(left.item.updatedAt);
-            const rightTime = sortMode.startsWith("heartbeat")
-              ? getTimestamp(right.item.heartbeatAt)
-              : getTimestamp(right.item.updatedAt);
-            const leftResolved = Number.isNaN(leftTime) ? -Infinity : leftTime;
-            const rightResolved = Number.isNaN(rightTime) ? -Infinity : rightTime;
-            const timeDiff = sortMode.endsWith("_asc")
-              ? leftResolved - rightResolved
-              : rightResolved - leftResolved;
-            if (timeDiff !== 0) {
-              return timeDiff;
-            }
-          }
-          const priorityDiff = getTaskListPriority(left.item.status) - getTaskListPriority(right.item.status);
-          if (priorityDiff !== 0) {
-            return priorityDiff;
-          }
-          return left.index - right.index;
-        })
-        .map(({ item }) => item),
+    () => buildVisibleTaskRows(allRows, { onlyAnomaly, sortMode }),
     [allRows, onlyAnomaly, sortMode],
   );
 
@@ -329,19 +121,12 @@ export default function TaskCenterPage() {
   const runningCount = allRows.filter((item) => item.status === "running").length;
   const queuedCount = allRows.filter((item) => item.status === "queued").length;
   const failedCount = allRows.filter((item) => item.status === "failed").length;
-  const completed24hCount = allRows.filter((item) => {
-    if (item.status !== "succeeded") {
-      return false;
-    }
-    const updatedAt = new Date(item.updatedAt).getTime();
-    if (Number.isNaN(updatedAt)) {
-      return false;
-    }
-    return Date.now() - updatedAt <= 24 * 60 * 60 * 1000;
-  }).length;
+  const waitingApprovalCount = allRows.filter((item) => item.status === "waiting_approval").length;
+  const archivableFinishedRows = visibleRows.filter((task) => task.status === "succeeded" || task.status === "cancelled");
 
   const invalidateTaskQueries = async () => {
     await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.autoDirectorFollowUps.overview });
   };
 
   const retryMutation = useMutation({
@@ -436,6 +221,32 @@ export default function TaskCenterPage() {
     },
   });
 
+  const archiveBatchMutation = useMutation({
+    mutationFn: (items: Array<{ kind: TaskKind; id: string }>) => archiveTasks(items),
+    onSuccess: async (response, items) => {
+      const archivedSet = new Set(
+        response.data.items
+          .filter((item) => item.success)
+          .map((item) => `${item.kind}:${item.id}`),
+      );
+      if (selectedKind && selectedId && archivedSet.has(`${selectedKind}:${selectedId}`)) {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete("kind");
+          next.delete("id");
+          return next;
+        });
+      }
+      await invalidateTaskQueries();
+      const failedCount = response.data.failedCount;
+      if (failedCount > 0) {
+        toast.error(`已归档 ${response.data.archivedCount} 项，另有 ${failedCount} 项未归档`);
+        return;
+      }
+      toast.success(`已归档 ${items.length} 项已完成或已取消任务`);
+    },
+  });
+
   const selectedTask = detailQuery.data?.data;
   const isAutoDirectorTask = Boolean(
     selectedTask
@@ -523,499 +334,144 @@ export default function TaskCenterPage() {
     },
   });
 
-  const handleFollowUpAction = (action: AutoDirectorAction) => {
-    if (!selectedTask) {
-      return;
-    }
-    if (action.kind === "navigation") {
-      navigate(action.targetUrl ?? selectedTask.sourceRoute);
-      return;
-    }
-    if (action.requiresConfirm) {
-      const confirmed = window.confirm(`确认执行“${action.label}”？`);
-      if (!confirmed) {
-        return;
-      }
-    }
-    executeFollowUpActionMutation.mutate({
-      taskId: selectedTask.id,
-      actionCode: action.code as AutoDirectorMutationActionCode,
-    });
-  };
+  const archiveVisibleLabel = "归档当前已完成/已取消";
 
   return (
     <div className="space-y-4">
-      <div className="task-status-summary-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">运行中</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{runningCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">排队中</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{queuedCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">失败</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{failedCount}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">24h 完成</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{completed24hCount}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <TaskCenterSummaryCards
+        runningCount={runningCount}
+        queuedCount={queuedCount}
+        failedCount={failedCount}
+        waitingApprovalCount={waitingApprovalCount}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_360px]">
-        <Card className="task-filter-card">
-          <CardHeader className="task-filter-header">
-            <CardTitle className="text-base">筛选</CardTitle>
-          </CardHeader>
-          <CardContent className="task-filter-controls grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-1">
-            <select
-              className="task-filter-kind col-start-1 row-start-1 w-full rounded-md border bg-background px-2 py-2 text-sm xl:col-auto xl:row-auto"
-              value={kind}
-              onChange={(event) => setKind(event.target.value as TaskKind | "")}
-            >
-              <option value="">全部类型</option>
-              <option value="book_analysis">拆书分析</option>
-              <option value="novel_workflow">小说创作</option>
-              <option value="novel_pipeline">小说流水线</option>
-              <option value="knowledge_document">知识库索引</option>
-              <option value="image_generation">图片生成</option>
-              <option value="style_extraction">写法提取</option>
-              <option value="agent_run">Agent 运行</option>
-            </select>
-            <select
-              className="task-filter-status col-start-2 row-start-1 w-full rounded-md border bg-background px-2 py-2 text-sm xl:col-auto xl:row-auto"
-              value={status}
-              onChange={(event) => setStatus(event.target.value as TaskStatus | "")}
-            >
-              <option value="">全部状态</option>
-              <option value="queued">排队中</option>
-              <option value="running">运行中</option>
-              <option value="waiting_approval">等待审批</option>
-              <option value="failed">失败</option>
-              <option value="cancelled">已取消</option>
-              <option value="succeeded">已完成</option>
-            </select>
-            <label className="task-filter-pill col-start-3 row-start-1 flex items-center gap-1.5 rounded-md border bg-muted/30 px-1.5 py-2 text-xs text-muted-foreground sm:gap-2 sm:px-2 sm:text-sm xl:col-auto xl:row-auto">
-              <input
-                type="checkbox"
-                checked={onlyAnomaly}
-                onChange={(event) => setOnlyAnomaly(event.target.checked)}
-              />
-              仅看异常
-            </label>
-            <Input
-              className="task-filter-keyword col-span-2 col-start-1 row-start-2 h-10 px-2 xl:col-auto xl:row-auto"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder="标题或关联对象"
-            />
-            <select
-              className="task-filter-sort col-start-3 row-start-2 w-full rounded-md border bg-background px-2 py-2 text-sm xl:col-auto xl:row-auto"
-              value={sortMode}
-              onChange={(event) => setSortMode(event.target.value as TaskSortMode)}
-            >
-              <option value="updated_desc">按更新时间排序：最新优先</option>
-              <option value="updated_asc">按更新时间排序：最早优先</option>
-              <option value="heartbeat_desc">按最近心跳排序：最新优先</option>
-              <option value="heartbeat_asc">按最近心跳排序：最早优先</option>
-              <option value="default">默认排序：失败优先</option>
-            </select>
-          </CardContent>
-        </Card>
+        <TaskCenterFiltersCard
+          kind={kind}
+          status={status}
+          keyword={keyword}
+          onlyAnomaly={onlyAnomaly}
+          sortMode={sortMode}
+          onKindChange={setKind}
+          onStatusChange={setStatus}
+          onKeywordChange={setKeyword}
+          onOnlyAnomalyChange={setOnlyAnomaly}
+          onSortModeChange={setSortMode}
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">任务列表</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {visibleRows.map((task) => {
-              const isSelected = task.kind === selectedKind && task.id === selectedId;
-              return (
-                <button
-                  key={`${task.kind}:${task.id}`}
-                  type="button"
-                  className={`w-full rounded-md border p-3 text-left transition-colors ${
-                    isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/40"
-                  }`}
-                  onClick={() => {
-                    setSearchParams((prev) => {
-                      const next = new URLSearchParams(prev);
-                      next.set("kind", task.kind);
-                      next.set("id", task.id);
-                      return next;
-                    });
-                  }}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">{task.title}</div>
-                  <Badge variant={toStatusVariant(task.status)}>{formatStatus(task.status)}</Badge>
-                </div>
-                <div className="mt-2 text-xs text-muted-foreground">
-                  {formatKind(task.kind)} | 进度 {Math.round(task.progress * 100)}%
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  阶段：{task.currentStage ?? "暂无"} | 当前项：{task.currentItemLabel ?? "暂无"}
-                </div>
-                {task.displayStatus || task.lastHealthyStage ? (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    状态：{task.displayStatus ?? formatStatus(task.status)} | 最近健康阶段：{task.lastHealthyStage ?? "暂无"}
-                  </div>
-                ) : null}
-                {task.kind === "novel_workflow" ? (
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    检查点：{formatCheckpoint(task.checkpointType, task.executionScopeLabel)} | 建议继续：{task.resumeAction ?? task.nextActionLabel ?? "继续主流程"}
-                  </div>
-                ) : null}
-                {task.blockingReason ? (
-                  <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                    原因：{task.blockingReason}
-                  </div>
-                ) : null}
-                <div className="mt-1 text-xs text-muted-foreground">
-                  最近心跳：{formatDate(task.heartbeatAt)} | 更新时间：{formatDate(task.updatedAt)}
-                </div>
-              </button>
-              );
-            })}
-            {visibleRows.length === 0 ? (
-              <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-                当前没有符合条件的任务。
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">任务详情</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {selectedTask ? (
-              <>
-                <div className="space-y-1">
-                  <div className="font-medium">{selectedTask.title}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatKind(selectedTask.kind)} | 归属：{selectedTask.ownerLabel}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={toStatusVariant(selectedTask.status)}>{formatStatus(selectedTask.status)}</Badge>
-                  <Badge variant="outline">进度 {Math.round(selectedTask.progress * 100)}%</Badge>
-                </div>
-                <div className="space-y-1 text-muted-foreground">
-                  <div>展示状态：{selectedTask.displayStatus ?? formatStatus(selectedTask.status)}</div>
-                  <div>当前阶段：{selectedTask.currentStage ?? "暂无"}</div>
-                  <div>当前项：{selectedTask.currentItemLabel ?? "暂无"}</div>
-                  {selectedTask.kind === "novel_workflow" ? (
-                    <>
-                      <div>最近检查点：{formatCheckpoint(selectedTask.checkpointType, selectedTask.executionScopeLabel)}</div>
-                      <div>恢复目标页：{formatResumeTarget(selectedTask.resumeTarget)}</div>
-                      <div>建议继续：{selectedTask.resumeAction ?? selectedTask.nextActionLabel ?? "继续小说主流程"}</div>
-                      <div>最近健康阶段：{selectedTask.lastHealthyStage ?? "暂无"}</div>
-                    </>
-                  ) : null}
-                  {selectedTask.blockingReason ? (
-                    <div>阻塞原因：{selectedTask.blockingReason}</div>
-                  ) : null}
-                  <div>最近心跳：{formatDate(selectedTask.heartbeatAt)}</div>
-                  <div>开始时间：{formatDate(selectedTask.startedAt)}</div>
-                  <div>结束时间：{formatDate(selectedTask.finishedAt)}</div>
-                  <div>重试计数：{selectedTask.retryCountLabel}</div>
-                  {(selectedTask.provider || selectedTask.model) ? (
-                    <div>调用模型：{selectedTask.provider ?? "暂无"} / {selectedTask.model ?? "暂无"}</div>
-                  ) : null}
-                  {isAutoDirectorTask ? (
-                    <>
-                      <div>当前界面模型：{llm.provider} / {llm.model}</div>
-                    </>
-                  ) : null}
-                  {(selectedTask.tokenUsage || selectedTask.provider || selectedTask.model) ? (
-                    <>
-                      <div>累计调用：{formatTokenCount(selectedTask.tokenUsage?.llmCallCount ?? 0)}</div>
-                      <div>输入 Tokens：{formatTokenCount(selectedTask.tokenUsage?.promptTokens ?? 0)}</div>
-                      <div>输出 Tokens：{formatTokenCount(selectedTask.tokenUsage?.completionTokens ?? 0)}</div>
-                      <div>累计总 Tokens：{formatTokenCount(selectedTask.tokenUsage?.totalTokens ?? 0)}</div>
-                      <div>最近记录：{formatDate(selectedTask.tokenUsage?.lastRecordedAt)}</div>
-                    </>
-                  ) : null}
-                </div>
-                {selectedTask.noticeCode || selectedTask.noticeSummary ? (
-                  <div className="rounded-md border border-amber-300/50 bg-amber-50/70 p-2 text-amber-900">
-                    <div className="font-medium">
-                      {selectedTaskChapterTitleWarning ? "当前提醒" : (selectedTask.noticeCode ?? "结果提醒")}
-                    </div>
-                    {selectedTask.noticeSummary ? (
-                      <div className="mt-1 text-sm">{selectedTask.noticeSummary}</div>
-                    ) : null}
-                    {selectedTaskChapterTitleWarning || selectedTaskNoticeRoute ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            if (selectedTaskChapterTitleWarning) {
-                              chapterTitleRepairMutation.startRepair(selectedTask ?? null);
-                              return;
-                            }
-                            if (selectedTaskNoticeRoute) {
-                              navigate(selectedTaskNoticeRoute);
-                            }
-                          }}
-                          disabled={chapterTitleRepairMutation.isPending}
-                        >
-                          {selectedTaskChapterTitleWarning?.label ?? selectedTaskNotice?.action?.label ?? "打开当前卷拆章"}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {selectedTask.failureCode || selectedTask.failureSummary ? (
-                  <div className="rounded-md border border-amber-300/50 bg-amber-50/70 p-2 text-amber-900">
-                    <div className="font-medium">
-                      {selectedTaskHasChapterTitleFailure ? "当前提醒" : (selectedTask.failureCode ?? "任务异常")}
-                    </div>
-                    {selectedTask.failureSummary ? (
-                      <div className="mt-1 text-sm">{selectedTask.failureSummary}</div>
-                    ) : null}
-                    {selectedTaskChapterTitleWarning || selectedTaskFailureRepairRoute ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            if (selectedTaskChapterTitleWarning) {
-                              chapterTitleRepairMutation.startRepair(selectedTask ?? null);
-                              return;
-                            }
-                            if (selectedTaskFailureRepairRoute) {
-                              navigate(selectedTaskFailureRepairRoute);
-                            }
-                          }}
-                          disabled={chapterTitleRepairMutation.isPending}
-                        >
-                          {selectedTaskChapterTitleWarning?.label ?? "快速修复章节标题"}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                {selectedTask.lastError && !selectedTaskHasChapterTitleFailure ? (
-                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-destructive">
-                    {selectedTask.lastError}
-                  </div>
-                ) : null}
-                {selectedTask.kind === "novel_workflow" && selectedTask.checkpointSummary ? (
-                  <div className="rounded-md border bg-muted/20 p-2 text-muted-foreground">
-                    {selectedTask.checkpointSummary}
-                  </div>
-                ) : null}
-                {selectedAutoDirectorFollowUp ? (
-                  <div className="rounded-md border border-primary/20 bg-primary/5 p-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="font-medium">当前待处理动作</div>
-                      <Badge variant="outline">{selectedAutoDirectorFollowUp.reasonLabel}</Badge>
-                      <Badge variant={selectedAutoDirectorFollowUp.priority === "P0" ? "destructive" : "secondary"}>
-                        {formatFollowUpPriority(selectedAutoDirectorFollowUp.priority)}
-                      </Badge>
-                    </div>
-                    <div className="mt-2 text-sm text-muted-foreground">
-                      {selectedAutoDirectorFollowUp.followUpSummary}
-                    </div>
-                    {selectedAutoDirectorFollowUp.blockingReason ? (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        阻塞原因：{selectedAutoDirectorFollowUp.blockingReason}
-                      </div>
-                    ) : null}
-                    {selectedAutoDirectorFollowUp.currentModel ? (
-                      <div className="mt-2 text-sm text-muted-foreground">
-                        当前任务模型：{selectedAutoDirectorFollowUp.currentModel}
-                      </div>
-                    ) : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedAutoDirectorFollowUp.availableActions.map((action) => (
-                        <Button
-                          key={action.code}
-                          size="sm"
-                          variant={followUpActionVariant(action)}
-                          onClick={() => handleFollowUpAction(action)}
-                          disabled={executeFollowUpActionMutation.isPending}
-                        >
-                          {action.label}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                {(selectedTask.status === "failed" || selectedTask.status === "cancelled") && isAutoDirectorTask ? (
-                  <div className="rounded-md border bg-muted/20 p-3">
-                    <div className="text-xs text-muted-foreground">使用其他模型重试</div>
-                    <div className="mt-2 flex flex-col gap-2">
-                      <LLMSelector
-                        value={retryOverride}
-                        onChange={setRetryOverride}
-                        compact
-                        showBadge={false}
-                        showHelperText={false}
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() =>
-                            retryMutation.mutate({
-                              kind: selectedTask.kind,
-                              id: selectedTask.id,
-                              llmOverride: {
-                                provider: retryOverride.provider,
-                                model: retryOverride.model,
-                                temperature: retryOverride.temperature,
-                              },
-                              resume: true,
-                            })
-                          }
-                          disabled={retryMutation.isPending || !canRetryWithSelectedModel}
-                        >
-                          使用所选模型重试
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-                <div className="flex flex-wrap gap-2">
-                  {!selectedAutoDirectorFollowUp && needsCandidateSelection ? (
-                    <Button
-                      size="sm"
-                      onClick={() => navigate(getCandidateSelectionLink(selectedTask.id))}
-                    >
-                      {selectedTask.resumeAction ?? "继续确认书级方向"}
-                    </Button>
-                  ) : null}
-                  {!selectedAutoDirectorFollowUp && canResumeFront10AutoExecution ? (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        continueWorkflowMutation.mutate({
-                          taskId: selectedTask.id,
-                          mode: "auto_execute_range",
-                        })}
-                      disabled={continueWorkflowMutation.isPending}
-                    >
-                      {selectedTask.resumeAction ?? `继续自动执行${selectedTask.executionScopeLabel ?? "当前章节范围"}`}
-                    </Button>
-                  ) : null}
-                  {!selectedAutoDirectorFollowUp
-                  && selectedTask.kind === "novel_workflow"
-                  && !needsCandidateSelection
-                  && !canResumeFront10AutoExecution
-                  && (selectedTask.status === "waiting_approval" || selectedTask.status === "queued" || selectedTask.status === "running") ? (
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        continueWorkflowMutation.mutate({
-                          taskId: selectedTask.id,
-                        })}
-                      disabled={continueWorkflowMutation.isPending}
-                    >
-                      {selectedTask.resumeAction ?? (isActiveAutoDirectorTask ? "查看进度" : "继续")}
-                    </Button>
-                  ) : null}
-                  {(selectedTask.status === "failed" || selectedTask.status === "cancelled") && (!isAutoDirectorTask || !selectedAutoDirectorFollowUp) ? (
-                    <>
-                      <Button
-                        size="sm"
-                        variant={isAutoDirectorTask ? "outline" : "default"}
-                        onClick={() =>
-                          retryMutation.mutate({
-                            kind: selectedTask.kind,
-                            id: selectedTask.id,
-                          })
-                        }
-                        disabled={retryMutation.isPending}
-                      >
-                        {isAutoDirectorTask ? "按任务原模型重试" : "重试"}
-                      </Button>
-                    </>
-                  ) : null}
-                  {(selectedTask.status === "queued" || selectedTask.status === "running" || selectedTask.status === "waiting_approval") ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        cancelMutation.mutate({
-                          kind: selectedTask.kind,
-                          id: selectedTask.id,
-                        })}
-                      disabled={cancelMutation.isPending}
-                      >
-                      取消
-                    </Button>
-                  ) : null}
-                  {ARCHIVABLE_STATUSES.has(selectedTask.status) ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        archiveMutation.mutate({
-                          kind: selectedTask.kind,
-                          id: selectedTask.id,
-                        })}
-                      disabled={archiveMutation.isPending}
-                    >
-                      归档
-                    </Button>
-                  ) : null}
-                  <Button asChild size="sm" variant="outline">
-                    <Link to={selectedTask.sourceRoute}>打开来源页面</Link>
-                  </Button>
-                  <OpenInCreativeHubButton
-                    bindings={{ taskId: selectedTask.id }}
-                    label="在创作中枢诊断"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="font-medium">步骤状态</div>
-                  {selectedTask.steps.map((step) => (
-                    <div key={step.key} className="flex items-center justify-between rounded-md border p-2">
-                      <div>{step.label}</div>
-                      <Badge variant="outline">{step.status}</Badge>
-                    </div>
-                  ))}
-                </div>
-                {selectedTask.kind === "novel_workflow" && Array.isArray(selectedTask.meta.milestones) && selectedTask.meta.milestones.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="font-medium">里程碑历史</div>
-                    {(selectedTask.meta.milestones as NovelWorkflowMilestone[]).map((item) => (
-                      <div key={`${item.checkpointType}:${item.createdAt}`} className="rounded-md border p-2 text-muted-foreground">
-                        <div className="font-medium text-foreground">{formatCheckpoint(item.checkpointType)}</div>
-                        <div className="mt-1">{item.summary}</div>
-                        <div className="mt-1 text-xs">记录时间：{formatDate(item.createdAt)}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="text-muted-foreground">请选择任务查看详情。</div>
-            )}
-          </CardContent>
-        </Card>
+        <TaskCenterListCard
+          visibleRows={visibleRows}
+          selectedKind={selectedKind}
+          selectedId={selectedId}
+          archiveLabel={archiveVisibleLabel}
+          archiveDisabled={archiveBatchMutation.isPending || archivableFinishedRows.length === 0}
+          onArchiveVisible={() => archiveBatchMutation.mutate(
+            archivableFinishedRows.map((task) => ({ kind: task.kind, id: task.id })),
+          )}
+          onSelectTask={(task) => {
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set("kind", task.kind);
+              next.set("id", task.id);
+              return next;
+            });
+          }}
+        />
+        <TaskCenterDetailPanel
+          navigateTo={navigate}
+          selectedTask={selectedTask}
+          selectedAutoDirectorFollowUp={selectedAutoDirectorFollowUp}
+          isAutoDirectorTask={isAutoDirectorTask}
+          isActiveAutoDirectorTask={isActiveAutoDirectorTask}
+          canResumeFront10AutoExecution={canResumeFront10AutoExecution}
+          needsCandidateSelection={needsCandidateSelection}
+          selectedTaskNoticeLabel={selectedTaskNotice?.action?.label ?? null}
+          selectedTaskNoticeRoute={selectedTaskNoticeRoute}
+          selectedTaskChapterTitleWarningLabel={selectedTaskChapterTitleWarning?.label ?? null}
+          selectedTaskHasChapterTitleFailure={selectedTaskHasChapterTitleFailure}
+          selectedTaskFailureRepairRoute={selectedTaskFailureRepairRoute}
+          chapterTitleRepairPending={chapterTitleRepairMutation.isPending}
+          retryOverride={retryOverride}
+          canRetryWithSelectedModel={canRetryWithSelectedModel}
+          llmProvider={llm.provider}
+          llmModel={llm.model}
+          continuePending={continueWorkflowMutation.isPending}
+          retryPending={retryMutation.isPending}
+          cancelPending={cancelMutation.isPending}
+          archivePending={archiveMutation.isPending}
+          followUpActionPending={executeFollowUpActionMutation.isPending}
+          onRetryOverrideChange={setRetryOverride}
+          onStartChapterTitleRepair={() => chapterTitleRepairMutation.startRepair(selectedTask ?? null)}
+          onFollowUpAction={(action) => handleTaskFollowUpAction({
+            action,
+            task: selectedTask,
+            navigate,
+            execute: (payload) => executeFollowUpActionMutation.mutate({
+              taskId: payload.taskId,
+              actionCode: payload.actionCode as AutoDirectorMutationActionCode,
+            }),
+          })}
+          onContinueCandidateSelection={() => navigate(selectedTask ? getCandidateSelectionLink(selectedTask.id) : "/tasks")}
+          onContinueFront10={() => {
+            if (!selectedTask) {
+              return;
+            }
+            continueWorkflowMutation.mutate({
+              taskId: selectedTask.id,
+              mode: "auto_execute_range",
+            });
+          }}
+          onContinueTask={() => {
+            if (!selectedTask) {
+              return;
+            }
+            continueWorkflowMutation.mutate({
+              taskId: selectedTask.id,
+            });
+          }}
+          onRetryOriginal={() => {
+            if (!selectedTask) {
+              return;
+            }
+            retryMutation.mutate({
+              kind: selectedTask.kind,
+              id: selectedTask.id,
+            });
+          }}
+          onRetryWithSelectedModel={() => {
+            if (!selectedTask) {
+              return;
+            }
+            retryMutation.mutate({
+              kind: selectedTask.kind,
+              id: selectedTask.id,
+              llmOverride: {
+                provider: retryOverride.provider,
+                model: retryOverride.model,
+                temperature: retryOverride.temperature,
+              },
+              resume: true,
+            });
+          }}
+          onCancel={() => {
+            if (!selectedTask) {
+              return;
+            }
+            cancelMutation.mutate({
+              kind: selectedTask.kind,
+              id: selectedTask.id,
+            });
+          }}
+          onArchive={() => {
+            if (!selectedTask) {
+              return;
+            }
+            archiveMutation.mutate({
+              kind: selectedTask.kind,
+              id: selectedTask.id,
+            });
+          }}
+        />
       </div>
     </div>
   );

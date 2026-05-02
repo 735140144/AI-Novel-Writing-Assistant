@@ -22,23 +22,24 @@ import {
   BOOK_ANALYSIS_STEPS,
   buildSteps,
   mapBookStatusToTaskStatus,
-  toLegacyTaskStatus,
+  resolveLegacyTaskStatusesForList,
 } from "../taskCenter.shared";
 
 export class BookTaskAdapter {
   async list(input: {
     status?: TaskStatus;
+    includeFinished?: boolean;
     keyword?: string;
     take: number;
   }): Promise<UnifiedTaskSummary[]> {
-    if (input.status === "waiting_approval") {
+    const statuses = resolveLegacyTaskStatusesForList(input.status, input.includeFinished);
+    if (statuses && statuses.length === 0) {
       return [];
     }
-    const status = toLegacyTaskStatus(input.status);
     const archivedIds = await getArchivedTaskIds("book_analysis");
     const rows = await prisma.bookAnalysis.findMany({
       where: {
-        status: status ? status : { in: ["queued", "running", "succeeded", "failed", "cancelled"] },
+        ...(statuses ? { status: { in: statuses } } : {}),
         ...(archivedIds.length
           ? {
             id: {
