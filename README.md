@@ -24,16 +24,6 @@
 - 👉 控制写作风格与叙事一致性
 - 👉 最终生成完整章节甚至整本小说
 
-## Windows 桌面版
-
-如果你只是想直接下载安装并开始使用，优先从桌面版入口进入：
-
-- 下载入口：[GitHub Releases](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases)
-- 最新版本页：[Latest Release](https://github.com/ExplosiveCoderflome/AI-Novel-Writing-Assistant/releases/latest)
-- 建议优先下载 `Setup.exe` 安装版；如果你不想安装，或者想放在 U 盘 / 临时目录里直接运行，再选择 `portable` 版本
-
-
-
 ## 项目定位
 
 很多 AI 写作工具的使用方式其实差不多：
@@ -124,9 +114,9 @@
 
 完整历史更新见 [docs/releases/release-notes.md](./docs/releases/release-notes.md)。
 
-### 2026-05-02
+### 2026-05-06
 
-任务中心默认会先展示还需要处理的任务，不再把已完成和已取消记录直接铺满列表；切到已完成或已取消筛选时，才会专门查看这些历史结果。对应筛选下也新增了一键归档，能把当前已完成和已取消任务一起收起。导演跟进红标则改成只统计待审批和异常项，提醒数字会更贴近真正需要介入的问题。
+登录页现在可以直接找回密码。提交注册邮箱后，系统会把重置入口发到邮箱；打开邮件里的链接即可设置新密码。找回密码与重置密码页面也已经接成真实表单，邮箱不存在时会返回统一提示，避免暴露账号是否注册。
 
 ## 功能预览
 ### 功能概览中的95%以上编写都是AI完成
@@ -284,16 +274,7 @@ pnpm install
 ```
 
 默认的 `pnpm install` 现在只准备 Web / Server 开发所需依赖，不会在首次安装时强制下载 Electron 桌面运行时。
-
-- 如果你只是运行现有 Web / Server 开发流，到这里就够了
-- 如果你要启动桌面端开发壳，首次运行 `pnpm dev:desktop` 时会自动补拉 Electron 运行时
-- 如果你想提前完成这一步，也可以手动执行：
-
-```bash
-pnpm run prepare:desktop-runtime
-```
-
-桌面端运行时首次下载需要可访问 Electron 分发源的网络环境；如果你所在网络无法访问 GitHub Releases，建议先配置代理或镜像后再执行桌面端命令。
+- 运行 `pnpm dev` 即可启动 Web / Server 开发流
 
 如果你在 Windows 上执行 `pnpm install` 时卡在 `prisma preinstall`，通常先检查这两类问题：
 
