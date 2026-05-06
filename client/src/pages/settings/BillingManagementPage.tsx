@@ -48,6 +48,52 @@ const emptyTemplateForm: PackageTemplateForm = {
   isActive: true,
 };
 
+const EMPTY_MODEL_PRICES: ReadonlyArray<{
+  id: string;
+  provider: string;
+  model: string;
+  inputPricePerM: number;
+  outputPricePerM: number;
+  cacheHitPricePerM: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}> = [];
+
+const EMPTY_PACKAGE_TEMPLATES: ReadonlyArray<{
+  id: string;
+  kind: "balance" | "monthly";
+  name: string;
+  description: string | null;
+  balanceAmount: number | null;
+  dailyQuotaAmount: number | null;
+  durationDays: number;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}> = [];
+
+const EMPTY_REDEEM_CODES: ReadonlyArray<{
+  id: string;
+  code: string;
+  kind: "balance" | "monthly";
+  status: "unused" | "redeemed" | "expired" | "disabled";
+  templateId: string | null;
+  templateName: string;
+  balanceAmount: number | null;
+  dailyQuotaAmount: number | null;
+  durationDays: number | null;
+  expiresAt: string | null;
+  redeemedAt: string | null;
+  redeemedByUserId: string | null;
+  redeemedByUserEmail: string | null;
+  createdByUserId: string | null;
+  createdByUserEmail: string | null;
+  createdAt: string;
+  updatedAt: string;
+}> = [];
+
 function getTemplateKindLabel(kind: "balance" | "monthly") {
   return kind === "monthly" ? "包月套餐" : "总额度套餐";
 }
@@ -89,9 +135,9 @@ export default function BillingManagementPage() {
     queryFn: getBillingRedeemCodes,
   });
 
-  const modelPrices = modelPricesQuery.data?.data ?? [];
-  const packageTemplates = packageTemplatesQuery.data?.data ?? [];
-  const redeemCodes = redeemCodesQuery.data?.data ?? [];
+  const modelPrices = modelPricesQuery.data?.data ?? EMPTY_MODEL_PRICES;
+  const packageTemplates = packageTemplatesQuery.data?.data ?? EMPTY_PACKAGE_TEMPLATES;
+  const redeemCodes = redeemCodesQuery.data?.data ?? EMPTY_REDEEM_CODES;
 
   const selectedTemplate = useMemo(
     () => packageTemplates.find((item) => item.id === templateId) ?? null,

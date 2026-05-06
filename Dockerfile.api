@@ -61,4 +61,4 @@ RUN mkdir -p /app/storage/generated-images /app/node_modules/.bin \
     && chown -R node:node /app/storage /app/node_modules/.bin/prisma
 USER node
 EXPOSE 3000
-CMD ["node", "./server/dist/app.js"]
+CMD ["sh", "-lc", "node /app/server/node_modules/prisma/build/index.js migrate deploy --config /app/server/prisma.config.ts && node ./server/dist/app.js"]
