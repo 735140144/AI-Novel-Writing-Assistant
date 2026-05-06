@@ -224,8 +224,14 @@ export default function TaskCenterPage() {
   const archiveBatchMutation = useMutation({
     mutationFn: (items: Array<{ kind: TaskKind; id: string }>) => archiveTasks(items),
     onSuccess: async (response, items) => {
+      const archiveResult = response.data;
+      if (!archiveResult) {
+        await invalidateTaskQueries();
+        toast.error("批量归档结果为空，请刷新后重试");
+        return;
+      }
       const archivedSet = new Set(
-        response.data.items
+        archiveResult.items
           .filter((item) => item.success)
           .map((item) => `${item.kind}:${item.id}`),
       );
@@ -238,9 +244,9 @@ export default function TaskCenterPage() {
         });
       }
       await invalidateTaskQueries();
-      const failedCount = response.data.failedCount;
+      const failedCount = archiveResult.failedCount;
       if (failedCount > 0) {
-        toast.error(`已归档 ${response.data.archivedCount} 项，另有 ${failedCount} 项未归档`);
+        toast.error(`已归档 ${archiveResult.archivedCount} 项，另有 ${failedCount} 项未归档`);
         return;
       }
       toast.success(`已归档 ${items.length} 项已完成或已取消任务`);
