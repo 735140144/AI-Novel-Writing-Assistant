@@ -3,8 +3,15 @@ import type { RouteObject } from "react-router-dom";
 import { Navigate, useRoutes } from "react-router-dom";
 import AppLayout from "@/components/layout/AppLayout";
 import { featureFlags } from "@/config/featureFlags";
+import RequireAdmin from "./RequireAdmin";
+import RequireAuth from "./RequireAuth";
 
 const Home = lazy(() => import("@/pages/Home"));
+const LoginPage = lazy(() => import("@/pages/auth/LoginPage"));
+const RegisterPage = lazy(() => import("@/pages/auth/RegisterPage"));
+const VerifyEmailPage = lazy(() => import("@/pages/auth/VerifyEmailPage"));
+const ForgotPasswordPage = lazy(() => import("@/pages/auth/ForgotPasswordPage"));
+const ResetPasswordPage = lazy(() => import("@/pages/auth/ResetPasswordPage"));
 const NovelList = lazy(() => import("@/pages/novels/NovelList"));
 const NovelCreate = lazy(() => import("@/pages/novels/NovelCreate"));
 const NovelPreview = lazy(() => import("@/pages/novels/NovelPreview"));
@@ -20,7 +27,10 @@ const GenreManagementPage = lazy(() => import("@/pages/genres/GenreManagementPag
 const StoryModeManagementPage = lazy(() => import("@/pages/storyModes/StoryModeManagementPage"));
 const TitleStudioPage = lazy(() => import("@/pages/titles/TitleStudioPage"));
 const ModelRoutesPage = lazy(() => import("@/pages/settings/ModelRoutesPage"));
+const BillingManagementPage = lazy(() => import("@/pages/settings/BillingManagementPage"));
 const SettingsPage = lazy(() => import("@/pages/settings/SettingsPage"));
+const PreferencesPage = lazy(() => import("@/pages/preferences/PreferencesPage"));
+const WalletPage = lazy(() => import("@/pages/wallet/WalletPage"));
 const WorldList = lazy(() => import("@/pages/worlds/WorldList"));
 const WorldGenerator = lazy(() => import("@/pages/worlds/WorldGenerator"));
 const WorldWorkspace = lazy(() => import("@/pages/worlds/WorldWorkspace"));
@@ -28,43 +38,69 @@ const WritingFormulaPage = lazy(() => import("@/pages/writingFormula/WritingForm
 const CharacterLibrary = lazy(() => import("@/pages/characters/CharacterLibrary"));
 
 const routes: RouteObject[] = [
+  { path: "/login", element: <LoginPage /> },
+  { path: "/register", element: <RegisterPage /> },
+  { path: "/verify-email", element: <VerifyEmailPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
-    path: "/",
-    element: <AppLayout />,
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <Home /> },
-      { path: "novels", element: <NovelList /> },
-      { path: "novels/create", element: <NovelCreate /> },
-      { path: "novels/:id/preview", element: <NovelPreview /> },
-      { path: "novels/:id/edit", element: <NovelEdit /> },
-      { path: "novels/:id/chapters/:chapterId", element: <NovelChapterEdit /> },
-      { path: "creative-hub", element: <CreativeHubPage /> },
-      { path: "chat-legacy", element: <ChatPage /> },
-      { path: "chat", element: <Navigate to="/creative-hub" replace /> },
-      { path: "book-analysis", element: <BookAnalysisPage /> },
-      { path: "tasks", element: <TaskCenterPage /> },
-      { path: "auto-director/follow-ups", element: <AutoDirectorFollowUpCenterPage /> },
-      { path: "auto-director/follow-up-center", element: <Navigate to="/auto-director/follow-ups" replace /> },
-      { path: "auto-director/followup-center", element: <Navigate to="/auto-director/follow-ups" replace /> },
-      { path: "knowledge", element: <KnowledgePage /> },
-      { path: "genres", element: <GenreManagementPage /> },
-      { path: "story-modes", element: <StoryModeManagementPage /> },
-      { path: "titles", element: <TitleStudioPage /> },
-      { path: "settings/model-routes", element: <ModelRoutesPage /> },
-      { path: "settings", element: <SettingsPage /> },
-      { path: "worlds", element: <WorldList /> },
       {
-        path: "worlds/generator",
-        element: featureFlags.worldWizardEnabled ? <WorldGenerator /> : <Navigate to="/worlds" replace />,
+        element: <AppLayout />,
+        children: [
+          { path: "/", element: <Home /> },
+          { path: "novels", element: <NovelList /> },
+          { path: "novels/create", element: <NovelCreate /> },
+          { path: "novels/:id/preview", element: <NovelPreview /> },
+          { path: "novels/:id/edit", element: <NovelEdit /> },
+          { path: "novels/:id/chapters/:chapterId", element: <NovelChapterEdit /> },
+          { path: "creative-hub", element: <CreativeHubPage /> },
+          { path: "chat-legacy", element: <ChatPage /> },
+          { path: "chat", element: <Navigate to="/creative-hub" replace /> },
+          { path: "book-analysis", element: <BookAnalysisPage /> },
+          { path: "tasks", element: <TaskCenterPage /> },
+          { path: "auto-director/follow-ups", element: <AutoDirectorFollowUpCenterPage /> },
+          { path: "auto-director/follow-up-center", element: <Navigate to="/auto-director/follow-ups" replace /> },
+          { path: "auto-director/followup-center", element: <Navigate to="/auto-director/follow-ups" replace /> },
+          { path: "knowledge", element: <KnowledgePage /> },
+          { path: "genres", element: <GenreManagementPage /> },
+          { path: "story-modes", element: <StoryModeManagementPage /> },
+          { path: "titles", element: <TitleStudioPage /> },
+          { path: "settings/model-routes", element: <ModelRoutesPage /> },
+          {
+            path: "settings/billing",
+            element: (
+              <RequireAdmin>
+                <BillingManagementPage />
+              </RequireAdmin>
+            ),
+          },
+          { path: "preferences", element: <PreferencesPage /> },
+          { path: "wallet", element: <WalletPage /> },
+          {
+            path: "settings",
+            element: (
+              <RequireAdmin>
+                <SettingsPage />
+              </RequireAdmin>
+            ),
+          },
+          { path: "worlds", element: <WorldList /> },
+          {
+            path: "worlds/generator",
+            element: featureFlags.worldWizardEnabled ? <WorldGenerator /> : <Navigate to="/worlds" replace />,
+          },
+          {
+            path: "worlds/:id/workspace",
+            element: featureFlags.worldWizardEnabled ? <WorldWorkspace /> : <Navigate to="/worlds" replace />,
+          },
+          { path: "style-engine", element: <WritingFormulaPage /> },
+          { path: "writing-formula", element: <Navigate to="/style-engine" replace /> },
+          { path: "base-characters", element: <CharacterLibrary /> },
+          { path: "*", element: <Navigate to="/" replace /> },
+        ],
       },
-      {
-        path: "worlds/:id/workspace",
-        element: featureFlags.worldWizardEnabled ? <WorldWorkspace /> : <Navigate to="/worlds" replace />,
-      },
-      { path: "style-engine", element: <WritingFormulaPage /> },
-      { path: "writing-formula", element: <Navigate to="/style-engine" replace /> },
-      { path: "base-characters", element: <CharacterLibrary /> },
-      { path: "*", element: <Navigate to="/" replace /> },
     ],
   },
 ];

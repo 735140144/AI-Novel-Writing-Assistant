@@ -22,6 +22,7 @@ export * from "./types/novelDirector";
 export * from "./types/autoDirectorApproval";
 export * from "./types/autoDirectorFollowUp";
 export * from "./types/autoDirectorValidation";
+export * from "./types/billing";
 export * from "./types/novelWorkflow";
 export * from "./types/volumePlanning";
 export * from "./types/canonicalState";

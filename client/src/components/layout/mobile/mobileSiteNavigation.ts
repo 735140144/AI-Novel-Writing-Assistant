@@ -5,6 +5,7 @@ export interface MobileNavItem {
   label: string;
   to: string;
   group: MobilePrimaryNavKey;
+  adminOnly?: boolean;
 }
 
 export interface MobileNavGroup {
@@ -36,6 +37,9 @@ export const MOBILE_ROUTE_PATTERNS: MobileRoutePattern[] = [
   { key: "story-modes", pattern: /^\/story-modes\/?$/, title: "推进模式", group: "more" },
   { key: "titles", pattern: /^\/titles\/?$/, title: "标题工坊", group: "more" },
   { key: "model-routes", pattern: /^\/settings\/model-routes\/?$/, title: "模型路由", group: "more" },
+  { key: "billing", pattern: /^\/settings\/billing\/?$/, title: "计费管理", group: "more" },
+  { key: "preferences", pattern: /^\/preferences\/?$/, title: "个人偏好", group: "more" },
+  { key: "wallet", pattern: /^\/wallet\/?$/, title: "钱包", group: "more" },
   { key: "settings", pattern: /^\/settings\/?$/, title: "系统设置", group: "more" },
   { key: "worlds", pattern: /^\/worlds\/?$/, title: "世界观", group: "more" },
   { key: "world-generator", pattern: /^\/worlds\/generator\/?$/, title: "世界生成", group: "more" },
@@ -78,7 +82,10 @@ const moreNavGroups: MobileNavGroup[] = [
       { key: "worlds", label: "世界观", to: "/worlds", group: "more" },
       { key: "world-generator", label: "世界生成", to: "/worlds/generator", group: "more" },
       { key: "model-routes", label: "模型路由", to: "/settings/model-routes", group: "more" },
-      { key: "settings", label: "系统设置", to: "/settings", group: "more" },
+      { key: "billing", label: "计费管理", to: "/settings/billing", group: "more", adminOnly: true },
+      { key: "preferences", label: "个人偏好", to: "/preferences", group: "more" },
+      { key: "wallet", label: "钱包", to: "/wallet", group: "more" },
+      { key: "settings", label: "系统设置", to: "/settings", group: "more", adminOnly: true },
     ],
   },
 ];

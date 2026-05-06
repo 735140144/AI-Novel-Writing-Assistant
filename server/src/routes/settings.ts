@@ -15,6 +15,7 @@ import {
   SUPPORTED_PROVIDERS,
 } from "../llm/providers";
 import { authMiddleware } from "../middleware/auth";
+import { requireAdmin } from "../middleware/admin";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
 import { ragServices } from "../services/rag";
@@ -43,6 +44,10 @@ import {
   MIN_STYLE_EXTRACTION_TIMEOUT_MS,
   saveStyleEngineRuntimeSettings,
 } from "../services/settings/StyleEngineRuntimeSettingsService";
+import {
+  getSystemEmailSettings,
+  saveSystemEmailSettings,
+} from "../services/settings/SystemEmailSettingsService";
 import { registerCustomProviderRoutes } from "./settings/customProviderRoutes";
 
 const router = Router();
@@ -103,6 +108,16 @@ const styleEngineRuntimeSettingsSchema = z.object({
     .int()
     .min(MIN_STYLE_EXTRACTION_TIMEOUT_MS)
     .max(MAX_STYLE_EXTRACTION_TIMEOUT_MS),
+});
+
+const systemEmailSettingsSchema = z.object({
+  smtpHost: z.string().trim().min(1),
+  smtpPort: z.coerce.number().int().min(1).max(65535),
+  smtpSecure: z.boolean(),
+  smtpUser: z.string().trim().optional(),
+  smtpPassword: z.string().trim().optional(),
+  fromEmail: z.string().trim().email("发件邮箱格式不正确。"),
+  fromName: z.string().trim().min(1),
 });
 
 type APIKeyRecordLike = {
@@ -281,7 +296,38 @@ async function buildCustomProviderStatus(item: {
 }
 
 router.use(authMiddleware);
+router.use(requireAdmin);
 registerCustomProviderRoutes(router);
+
+router.get("/system-email", async (_req, res, next) => {
+  try {
+    const data = await getSystemEmailSettings();
+    res.status(200).json({
+      success: true,
+      data,
+      message: "系统邮件设置读取成功。",
+    } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put(
+  "/system-email",
+  validate({ body: systemEmailSettingsSchema }),
+  async (req, res, next) => {
+    try {
+      const data = await saveSystemEmailSettings(req.body as z.infer<typeof systemEmailSettingsSchema>);
+      res.status(200).json({
+        success: true,
+        data,
+        message: "系统邮件设置保存成功。",
+      } satisfies ApiResponse<typeof data>);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.get("/style-engine-runtime", async (_req, res, next) => {
   try {

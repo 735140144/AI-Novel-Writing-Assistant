@@ -23,6 +23,8 @@ import healthRouter from "./routes/health";
 import imagesRouter from "./routes/images";
 import knowledgeRouter from "./routes/knowledge";
 import llmRouter from "./routes/llm";
+import authRouter from "./routes/auth";
+import billingRouter from "./routes/billing";
 import novelRouter from "./routes/novel";
 import novelDirectorRouter from "./routes/novelDirector";
 import novelDecisionsRouter from "./routes/novelDecisions";
@@ -108,6 +110,8 @@ export function createApp() {
   }));
   app.use(express.json({ limit: jsonBodyLimit }));
 
+  app.use("/api/auth", authRouter);
+  app.use("/api", billingRouter);
   app.use("/api/health", healthRouter);
   app.use("/api/agent-catalog", agentCatalogRouter);
   app.use("/api/agent-runs", agentRunsRouter);

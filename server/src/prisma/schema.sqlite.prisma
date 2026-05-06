@@ -258,6 +258,35 @@ enum AuditType {
   mode_fit
 }
 
+enum BillingPackageKind {
+  balance
+  monthly
+}
+
+enum BillingRedeemCodeStatus {
+  unused
+  redeemed
+  expired
+  disabled
+}
+
+enum BillingPackageGrantStatus {
+  active
+  expired
+  disabled
+}
+
+enum UserRole {
+  admin
+  user
+}
+
+enum UserStatus {
+  pending_verification
+  active
+  disabled
+}
+
 enum AuditIssueStatus {
   open
   resolved
@@ -306,6 +335,7 @@ enum CharacterGender {
 
 model Novel {
   id                String      @id @default(cuid())
+  userId            String?
   title             String
   description       String?
   targetAudience    String?
@@ -340,6 +370,7 @@ model Novel {
   primaryStoryModeId String?
   secondaryStoryModeId String?
   worldId           String?
+  user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   genre             NovelGenre? @relation(fields: [genreId], references: [id])
   primaryStoryMode  NovelStoryMode? @relation("NovelPrimaryStoryMode", fields: [primaryStoryModeId], references: [id], onDelete: SetNull)
   secondaryStoryMode NovelStoryMode? @relation("NovelSecondaryStoryMode", fields: [secondaryStoryModeId], references: [id], onDelete: SetNull)
@@ -388,6 +419,7 @@ model Novel {
   createdAt          DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
+  @@index([userId])
   @@index([genreId])
   @@index([primaryStoryModeId])
   @@index([secondaryStoryModeId])
@@ -745,6 +777,7 @@ model CharacterRelationStage {
 
 model BaseCharacter {
   id          String   @id @default(cuid())
+  userId      String?
   name        String
   role        String
   personality String
@@ -756,6 +789,7 @@ model BaseCharacter {
   keyEvents   String?
   tags        String   @default("")
   category    String
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   revisions   BaseCharacterRevision[]
   libraryLinks CharacterLibraryLink[]
   syncProposals CharacterSyncProposal[]
@@ -763,6 +797,8 @@ model BaseCharacter {
   imageAssets ImageAsset[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model BaseCharacterRevision {
@@ -836,6 +872,7 @@ model CharacterSyncProposal {
 
 model ImageGenerationTask {
   id              String            @id @default(cuid())
+  userId          String?
   sceneType       ImageSceneType    @default(character)
   baseCharacterId String?
   provider        String
@@ -859,27 +896,31 @@ model ImageGenerationTask {
   error           String?
   startedAt       DateTime?
   finishedAt      DateTime?
+  user            User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   baseCharacter   BaseCharacter?    @relation(fields: [baseCharacterId], references: [id], onDelete: Cascade)
   assets          ImageAsset[]
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
+  @@index([userId])
   @@index([sceneType, status])
   @@index([baseCharacterId, createdAt])
 }
 
 model StyleExtractionTask {
   id                    String            @id @default(cuid())
+  userId                String?
   name                  String
   category              String?
-    sourceText            String
-    sourceType            String            @default("from_text")
-    sourceRefId           String?
-    sourceProcessingMode  String            @default("full_text")
-    sourceInputText       String?
-    sourceInputCharLimit  Int?
-    sourceInputCharCount  Int?
-    provider              String
+  sourceText            String
+  sourceType            String            @default("from_text")
+  sourceRefId           String?
+  sourceDocumentId      String?
+  sourceProcessingMode  String            @default("full_text")
+  sourceInputText       String?
+  sourceInputCharLimit  Int?
+  sourceInputCharCount  Int?
+  provider              String
   model                 String?
   temperature           Float?
   presetKey             String            @default("balanced")
@@ -904,11 +945,17 @@ model StyleExtractionTask {
   totalTokens           Int               @default(0)
   llmCallCount          Int               @default(0)
   lastTokenRecordedAt   DateTime?
+  user                  User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadataJson          String?
+  createdStyleProfile   StyleProfile?     @relation(fields: [createdStyleProfileId], references: [id], onDelete: SetNull)
+  sourceDocument        KnowledgeDocument? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
+  @@index([userId])
   @@index([status, updatedAt])
   @@index([createdStyleProfileId])
+  @@index([sourceDocumentId])
   @@index([sourceType, sourceRefId])
 }
 
@@ -940,26 +987,32 @@ model ImageAsset {
 
 model NovelGenre {
   id          String       @id @default(cuid())
+  userId      String?
   name        String
   description String?
   template    String?
   parentId    String?
+  user        User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent      NovelGenre?  @relation("GenreChildren", fields: [parentId], references: [id])
   children    NovelGenre[] @relation("GenreChildren")
   novels      Novel[]
+  titleLibraryItems TitleLibrary[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
+  @@index([userId])
   @@index([parentId])
 }
 
 model NovelStoryMode {
   id                String           @id @default(cuid())
+  userId            String?
   name              String
   description       String?
   template          String?
   profileJson       String
   parentId          String?
+  user              User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent            NovelStoryMode?  @relation("StoryModeChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children          NovelStoryMode[] @relation("StoryModeChildren")
   primaryNovels     Novel[]          @relation("NovelPrimaryStoryMode")
@@ -967,11 +1020,13 @@ model NovelStoryMode {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
+  @@index([userId])
   @@index([parentId])
 }
 
 model World {
   id                 String                @id @default(cuid())
+  userId             String?
   name               String
   description        String?
   worldType          String?
@@ -999,6 +1054,7 @@ model World {
   structureJson      String?
   bindingSupportJson String?
   structureSchemaVersion Int @default(1)
+  user               User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   novels             Novel[]
   snapshots          WorldSnapshot[]
   deepeningQA        WorldDeepeningQA[]
@@ -1006,20 +1062,25 @@ model World {
   libraryItems       WorldPropertyLibrary[]
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
+
+  @@index([userId])
 }
 
 model WorldPropertyLibrary {
   id            String  @id @default(cuid())
+  userId        String?
   name          String
   description   String?
   category      String
   worldType     String?
   usageCount    Int     @default(0)
   sourceWorldId String?
+  user          User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceWorld   World?  @relation(fields: [sourceWorldId], references: [id], onDelete: SetNull)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@index([userId])
   @@index([sourceWorldId])
 }
 
@@ -1071,6 +1132,7 @@ model WorldConsistencyIssue {
 
 model WritingFormula {
   id                 String   @id @default(cuid())
+  userId             String?
   name               String
   sourceText         String?
   content            String?
@@ -1093,12 +1155,16 @@ model WritingFormula {
   formulaDescription String?
   formulaSteps       String?
   applicationTips    String?
+  user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model StyleProfile {
   id                 String   @id @default(cuid())
+  userId             String?
   name               String
   description        String?
   category           String?
@@ -1117,11 +1183,14 @@ model StyleProfile {
   languageRulesJson  String?
   rhythmRulesJson    String?
   status             String   @default("active")
+  user               User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   antiAiBindings     StyleProfileAntiAiRule[]
   bindings           StyleBinding[]
+  extractionTasks    StyleExtractionTask[]
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
+  @@index([userId])
   @@index([status, updatedAt])
   @@index([sourceType, sourceRefId])
 }
@@ -1196,14 +1265,97 @@ model StyleBinding {
 
 model TitleLibrary {
   id          String   @id @default(cuid())
+  userId      String?
   title       String
   description String?
   clickRate   Float?
   keywords    String?
   genreId     String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genre       NovelGenre? @relation(fields: [genreId], references: [id], onDelete: SetNull)
   usedCount   Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([genreId])
+}
+
+model User {
+  id                 String                   @id @default(cuid())
+  email              String                   @unique
+  passwordHash       String
+  role               UserRole                 @default(user)
+  status             UserStatus               @default(pending_verification)
+  emailVerifiedAt    DateTime?
+  sessions           UserSession[]
+  emailVerifications EmailVerificationToken[]
+  passwordResets     PasswordResetToken[]
+  settings           UserSetting[]
+  modelRouteConfigs  UserModelRouteConfig[]
+  novels             Novel[]
+  worlds             World[]
+  novelGenres        NovelGenre[]
+  novelStoryModes    NovelStoryMode[]
+  titleLibraryItems  TitleLibrary[]
+  worldPropertyLibraryItems WorldPropertyLibrary[]
+  knowledgeDocuments KnowledgeDocument[]
+  bookAnalyses       BookAnalysis[]
+  baseCharacters     BaseCharacter[]
+  imageGenerationTasks ImageGenerationTask[]
+  styleExtractionTasks StyleExtractionTask[]
+  writingFormulas    WritingFormula[]
+  styleProfiles      StyleProfile[]
+  generationJobs     GenerationJob[]
+  agentRunsOwned     AgentRun[]
+  workflowTasksOwned NovelWorkflowTask[]
+  creativeHubThreads CreativeHubThread[]
+  billingWallet      BillingWalletAccount?
+  billingRedeemCodesCreated BillingRedeemCode[] @relation("BillingRedeemCodeCreatedByUser")
+  billingRedeemCodesRedeemed BillingRedeemCode[] @relation("BillingRedeemCodeRedeemedByUser")
+  billingPackageGrants BillingPackageGrant[]
+  billingUsageRecords BillingUsageRecord[]
+  billingDailyUsageSummaries BillingDailyUsageSummary[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+}
+
+model UserSession {
+  id               String   @id @default(cuid())
+  userId           String
+  sessionTokenHash String   @unique
+  expiresAt        DateTime
+  lastSeenAt       DateTime @default(now())
+  ip               String?
+  userAgent        String?
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, expiresAt])
 }
 
 model APIKey {
@@ -1230,6 +1382,153 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
+model BillingModelPrice {
+  id                String   @id @default(cuid())
+  provider          String
+  model             String
+  inputPricePerM    Decimal
+  outputPricePerM   Decimal
+  cacheHitPricePerM Decimal
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([provider, model])
+  @@index([provider, isActive])
+}
+
+model BillingPackageTemplate {
+  id               String   @id @default(cuid())
+  kind             BillingPackageKind
+  name             String
+  description      String?
+  balanceAmount    Decimal?
+  dailyQuotaAmount Decimal?
+  durationDays     Int      @default(30)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  redeemCodes      BillingRedeemCode[]
+  packageGrants    BillingPackageGrant[]
+
+  @@index([kind, isActive, sortOrder])
+}
+
+model BillingRedeemCode {
+  id               String                   @id @default(cuid())
+  code             String                   @unique
+  kind             BillingPackageKind
+  templateId       String?
+  status           BillingRedeemCodeStatus   @default(unused)
+  expiresAt        DateTime?
+  redeemedAt       DateTime?
+  redeemedByUserId String?
+  createdByUserId  String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  template         BillingPackageTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  redeemedByUser   User?                    @relation("BillingRedeemCodeRedeemedByUser", fields: [redeemedByUserId], references: [id], onDelete: SetNull)
+  createdByUser    User?                    @relation("BillingRedeemCodeCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  packageGrants    BillingPackageGrant[]
+
+  @@index([status, createdAt])
+  @@index([redeemedByUserId])
+  @@index([createdByUserId])
+}
+
+model BillingWalletAccount {
+  userId        String   @id
+  balanceAmount Decimal  @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([balanceAmount])
+}
+
+model BillingPackageGrant {
+  id                   String                    @id @default(cuid())
+  userId               String
+  templateId           String?
+  kind                 BillingPackageKind
+  dailyQuotaAmount     Decimal?
+  dailyRemainingAmount Decimal?
+  startsAt             DateTime
+  expiresAt            DateTime
+  lastResetAt          DateTime?
+  status               BillingPackageGrantStatus @default(active)
+  sourceRedeemCodeId   String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  user                 User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template             BillingPackageTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  sourceRedeemCode     BillingRedeemCode?        @relation(fields: [sourceRedeemCodeId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, expiresAt])
+  @@index([userId, kind, status])
+  @@index([sourceRedeemCodeId])
+}
+
+model BillingUsageRecord {
+  id                      String   @id @default(cuid())
+  userId                  String
+  sourceType              String
+  sourceId                String?
+  provider                String
+  model                   String
+  taskType                String?
+  promptTokens            Int      @default(0)
+  completionTokens        Int      @default(0)
+  cacheHitTokens          Int      @default(0)
+  totalTokens             Int      @default(0)
+  inputCost               Decimal
+  outputCost              Decimal
+  cacheHitCost            Decimal
+  totalCost               Decimal
+  chargedFromPackageAmount Decimal
+  chargedFromWalletAmount Decimal
+  dayKey                  String
+  createdAt               DateTime @default(now())
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dayKey])
+  @@index([userId, createdAt])
+  @@index([provider, model])
+}
+
+model BillingDailyUsageSummary {
+  id               String   @id @default(cuid())
+  userId           String
+  dayKey           String
+  moneySpent       Decimal
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  cacheHitTokens   Int      @default(0)
+  totalTokens      Int      @default(0)
+  callCount        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayKey])
+  @@index([userId, dayKey])
+}
+
+model UserSetting {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
+}
+
 model ModelRouteConfig {
   id                       String  @id @default(cuid())
   taskType                 String  @unique
@@ -1242,6 +1541,25 @@ model ModelRouteConfig {
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 
+  @@index([provider])
+}
+
+model UserModelRouteConfig {
+  id                       String   @id @default(cuid())
+  userId                   String
+  taskType                 String
+  provider                 String
+  model                    String
+  temperature              Float    @default(0.7)
+  maxTokens                Int?
+  requestProtocol          String   @default("auto")
+  structuredResponseFormat String   @default("auto")
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@unique([userId, taskType])
+  @@index([userId])
   @@index([provider])
 }
 
@@ -1311,6 +1629,7 @@ model ConsistencyFact {
 
 model GenerationJob {
   id             String            @id @default(cuid())
+  userId         String?
   novelId        String
   startOrder     Int
   endOrder       Int
@@ -1342,16 +1661,19 @@ model GenerationJob {
   payload        String?
   startedAt      DateTime?
   finishedAt     DateTime?
+  user           User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   novel          Novel             @relation(fields: [novelId], references: [id], onDelete: Cascade)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
+  @@index([userId])
   @@index([novelId])
   @@index([novelId, status])
 }
 
 model AgentRun {
   id           String         @id @default(cuid())
+  userId       String?
   novelId      String?
   chapterId    String?
   sessionId    String
@@ -1364,12 +1686,14 @@ model AgentRun {
   startedAt    DateTime?
   finishedAt   DateTime?
   metadataJson String?
+  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   novel        Novel?         @relation(fields: [novelId], references: [id], onDelete: SetNull)
   steps        AgentStep[]
   approvals    AgentApproval[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
+  @@index([userId])
   @@index([status, updatedAt])
   @@index([novelId, createdAt])
   @@index([novelId, chapterId, createdAt])
@@ -1429,6 +1753,7 @@ model AgentApproval {
 
 model CreativeHubThread {
   id               String                  @id @default(cuid())
+  userId           String?
   title            String                  @default("新对话")
   archived         Boolean                 @default(false)
   status           CreativeHubThreadStatus @default(idle)
@@ -1436,10 +1761,12 @@ model CreativeHubThread {
   latestError      String?
   resourceBindingsJson String?
   metadataJson     String?
+  user             User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   checkpoints      CreativeHubCheckpoint[]
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
+  @@index([userId])
   @@index([archived, updatedAt])
   @@index([status, updatedAt])
 }
@@ -1600,6 +1927,7 @@ model BookContract {
 
 model NovelWorkflowTask {
   id                 String                  @id @default(cuid())
+  userId             String?
   novelId            String?
   lane               NovelWorkflowLane
   title              String
@@ -1626,11 +1954,13 @@ model NovelWorkflowTask {
   totalTokens        Int                     @default(0)
   llmCallCount       Int                     @default(0)
   lastTokenRecordedAt DateTime?
+  user               User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   novel              Novel?                  @relation(fields: [novelId], references: [id], onDelete: SetNull)
   autoApprovalRecords AutoDirectorAutoApprovalRecord[]
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
+  @@index([userId])
   @@index([novelId, status, updatedAt])
   @@index([status, updatedAt])
   @@index([lane, updatedAt])
@@ -2092,6 +2422,7 @@ model AuditIssue {
 
 model KnowledgeDocument {
   id                     String                   @id @default(cuid())
+  userId                 String?
   title                  String
   fileName               String
   status                 KnowledgeDocumentStatus  @default(enabled)
@@ -2099,15 +2430,18 @@ model KnowledgeDocument {
   activeVersionNumber    Int                      @default(0)
   latestIndexStatus      KnowledgeIndexStatus     @default(idle)
   lastIndexedAt          DateTime?
+  user                   User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeVersion          KnowledgeDocumentVersion? @relation("KnowledgeDocumentActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
   versions               KnowledgeDocumentVersion[] @relation("KnowledgeDocumentVersions")
   bindings               KnowledgeBinding[]
   bookAnalyses           BookAnalysis[]
+  styleExtractionTasks   StyleExtractionTask[]
   publishedFromAnalyses  BookAnalysis[]           @relation("BookAnalysisPublishedDocument")
   continuationNovels     Novel[]                  @relation("NovelKnowledgeContinuation")
   createdAt              DateTime                 @default(now())
   updatedAt              DateTime                 @updatedAt
 
+  @@index([userId])
   @@index([status, updatedAt])
   @@index([title])
 }
@@ -2145,6 +2479,7 @@ model KnowledgeBinding {
 
 model BookAnalysis {
   id                          String             @id @default(cuid())
+  userId                      String?
   documentId                  String
   documentVersionId           String
   title                       String
@@ -2166,6 +2501,7 @@ model BookAnalysis {
   lastError                   String?
   lastRunAt                   DateTime?
   publishedDocumentId         String?
+  user                        User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   document                    KnowledgeDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
   documentVersion             KnowledgeDocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: NoAction)
   publishedDocument           KnowledgeDocument?  @relation("BookAnalysisPublishedDocument", fields: [publishedDocumentId], references: [id], onDelete: SetNull)
@@ -2174,6 +2510,8 @@ model BookAnalysis {
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
 
+  @@index([userId])
+  @@index([userId, status])
   @@index([documentId, status])
   @@index([documentVersionId])
   @@index([status, updatedAt])

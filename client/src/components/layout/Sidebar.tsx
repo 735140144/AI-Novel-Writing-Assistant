@@ -10,10 +10,12 @@ import {
   ListTodo,
   Route,
   ScanSearch,
+  Settings,
   Settings2,
   SquarePen,
   Tags,
   UsersRound,
+  Wallet,
   WandSparkles,
   Workflow,
   type LucideIcon,
@@ -26,11 +28,13 @@ import { getTaskOverview } from "@/api/tasks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  adminOnly?: boolean;
 }
 
 interface NavGroup {
@@ -66,7 +70,10 @@ const navGroups: NavGroup[] = [
     title: "系统",
     items: [
       { to: "/settings/model-routes", label: "模型路由", icon: Route },
-      { to: "/settings", label: "系统设置", icon: Settings2 },
+      { to: "/settings/billing", label: "计费管理", icon: Route, adminOnly: true },
+      { to: "/preferences", label: "个人偏好", icon: Settings },
+      { to: "/settings", label: "系统设置", icon: Settings2, adminOnly: true },
+      { to: "/wallet", label: "钱包", icon: Wallet, adminOnly: false },
     ],
   },
 ];
@@ -77,6 +84,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
+  const user = useAuthStore((state) => state.user);
+  const isAdmin = user?.role === "admin";
   const taskQuery = useQuery({
     queryKey: queryKeys.tasks.overview,
     queryFn: getTaskOverview,
@@ -205,7 +214,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               <div className="mx-auto h-px w-8 bg-border/70" />
             )}
 
-            {group.items.map((item) => {
+            {group.items.filter((item) => !(item.adminOnly && !isAdmin)).map((item) => {
               const Icon = item.icon;
               const isNovelEntry = item.to === "/novels";
 

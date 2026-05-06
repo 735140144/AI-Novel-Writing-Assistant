@@ -17,6 +17,8 @@ import {
 } from "./structuredOutput";
 import { attachLLMUsageTracking } from "./usageTracking";
 import { resolveModel, toStructuredOutputStrategy, type TaskType } from "./modelRouter";
+import { ensureBillingAllowance } from "../middleware/billingGuard";
+import { getRequestContext } from "../runtime/requestContext";
 import {
   getProviderEnvApiKey,
   getProviderEnvModel,
@@ -373,7 +375,17 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
     baseURL: resolved.baseURL,
     promptMeta: resolved.promptMeta,
   };
-  const decorated = attachLLMDebugLogging(attachLLMUsageTracking(attachLLMRequestGuard(llm, meta)), meta);
+  const decorated = attachLLMDebugLogging(
+    attachLLMUsageTracking(
+      attachLLMRequestGuard(llm, meta),
+      {
+        provider: resolved.provider,
+        model: resolved.model,
+        taskType: resolved.taskType ?? null,
+      },
+    ),
+    meta,
+  );
   const limited = attachLLMRequestLimiter(decorated, {
     provider: resolved.provider,
     model: resolved.model,
@@ -386,6 +398,19 @@ export function createLLMFromResolvedOptions(resolved: ResolvedLLMClientOptions)
 
 export async function getLLM(provider?: LLMProvider, options: LLMOptions = {}): Promise<ChatOpenAI> {
   const resolved = await resolveLLMClientOptions(provider, options);
+  const requestContext = getRequestContext();
+  if (!requestContext?.billingBypass) {
+    await ensureBillingAllowance({
+      userId: requestContext?.authMode === "session" ? requestContext.userId : null,
+      provider: resolved.provider,
+      model: resolved.model,
+      promptTokens: resolved.promptMeta?.estimatedInputTokens ?? 0,
+      completionTokens: resolved.maxTokens ?? 0,
+      cacheHitTokens: 0,
+      totalTokens: (resolved.promptMeta?.estimatedInputTokens ?? 0) + (resolved.maxTokens ?? 0),
+      skipBilling: false,
+    });
+  }
   return createLLMFromResolvedOptions(resolved);
 }
 

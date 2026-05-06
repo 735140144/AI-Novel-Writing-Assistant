@@ -7,7 +7,6 @@ import {
   SQLITE_PRISMA_MIGRATIONS_PATH,
 } from "../config/database";
 import {
-  resolveAppRuntimeMode,
   resolveDatabaseFilePath,
   resolveServerRoot,
 } from "../runtime/appPaths";
@@ -16,7 +15,15 @@ const KNOWN_APPLICATION_TABLES = [
   "Novel",
   "APIKey",
   "AppSetting",
+  "UserSetting",
   "KnowledgeDocument",
+  "BillingModelPrice",
+  "BillingPackageTemplate",
+  "BillingRedeemCode",
+  "BillingWalletAccount",
+  "BillingPackageGrant",
+  "BillingUsageRecord",
+  "BillingDailyUsageSummary",
 ];
 
 const REQUIRED_COLUMN_BACKFILLS = [
@@ -46,9 +53,44 @@ const REQUIRED_COLUMN_BACKFILLS = [
     columnDefinition: `"pendingManualRecovery" BOOLEAN NOT NULL DEFAULT false`,
   },
   {
+    tableName: "GenerationJob",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "AgentRun",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "CreativeHubThread",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "NovelWorkflowTask",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
     tableName: "ImageGenerationTask",
     columnName: "pendingManualRecovery",
     columnDefinition: `"pendingManualRecovery" BOOLEAN NOT NULL DEFAULT false`,
+  },
+  {
+    tableName: "BaseCharacter",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "ImageGenerationTask",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "StyleProfile",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
   },
   {
     tableName: "StyleProfile",
@@ -67,6 +109,11 @@ const REQUIRED_COLUMN_BACKFILLS = [
   },
   {
     tableName: "StyleExtractionTask",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
+  },
+  {
+    tableName: "StyleExtractionTask",
     columnName: "sourceType",
     columnDefinition: `"sourceType" TEXT NOT NULL DEFAULT 'from_text'`,
   },
@@ -74,6 +121,11 @@ const REQUIRED_COLUMN_BACKFILLS = [
     tableName: "StyleExtractionTask",
     columnName: "sourceRefId",
     columnDefinition: `"sourceRefId" TEXT`,
+  },
+  {
+    tableName: "StyleExtractionTask",
+    columnName: "sourceDocumentId",
+    columnDefinition: `"sourceDocumentId" TEXT`,
   },
   {
     tableName: "StyleExtractionTask",
@@ -94,6 +146,16 @@ const REQUIRED_COLUMN_BACKFILLS = [
     tableName: "StyleExtractionTask",
     columnName: "sourceInputCharCount",
     columnDefinition: `"sourceInputCharCount" INTEGER`,
+  },
+  {
+    tableName: "StyleExtractionTask",
+    columnName: "metadataJson",
+    columnDefinition: `"metadataJson" TEXT`,
+  },
+  {
+    tableName: "WritingFormula",
+    columnName: "userId",
+    columnDefinition: `"userId" TEXT`,
   },
 ] as const;
 
@@ -340,10 +402,6 @@ function ensureSchemaColumnBackfills(database: Database.Database): void {
 }
 
 export async function ensureRuntimeDatabaseReady(): Promise<void> {
-  if (resolveAppRuntimeMode() !== "desktop") {
-    return;
-  }
-
   const databasePath = resolveSqliteDatabasePath();
   if (!databasePath) {
     return;
@@ -351,7 +409,7 @@ export async function ensureRuntimeDatabaseReady(): Promise<void> {
 
   const migrationsDir = resolveMigrationsDir();
   if (!fs.existsSync(migrationsDir)) {
-    throw new Error(`Desktop runtime migrations were not found at ${migrationsDir}.`);
+    throw new Error(`SQLite runtime migrations were not found at ${migrationsDir}.`);
   }
 
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
