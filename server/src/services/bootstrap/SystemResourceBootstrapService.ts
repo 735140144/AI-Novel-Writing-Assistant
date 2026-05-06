@@ -621,6 +621,18 @@ export async function ensureSystemResourceStarterData(
   return report;
 }
 
+export async function ensureAdminCreativeResources(userId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    for (const root of BUILT_IN_GENRE_SEEDS) {
+      await seedGenreNode(tx, root, userId, "missing_only");
+    }
+    for (const root of BUILT_IN_STORY_MODE_SEEDS) {
+      await seedStoryModeNode(tx, root, userId, "missing_only");
+    }
+    await seedStarterStyleProfiles(tx, "missing_only");
+  });
+}
+
 export function hasSystemResourceBootstrapChanges(report: SystemResourceBootstrapReport): boolean {
   return Object.values(report).some((value) => value > 0);
 }
