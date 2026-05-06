@@ -1,0 +1,21 @@
+ALTER TABLE "NovelGenre" ADD COLUMN "userId" TEXT;
+ALTER TABLE "NovelStoryMode" ADD COLUMN "userId" TEXT;
+ALTER TABLE "TitleLibrary" ADD COLUMN "userId" TEXT;
+ALTER TABLE "BaseCharacter" ADD COLUMN "userId" TEXT;
+ALTER TABLE "ImageGenerationTask" ADD COLUMN "userId" TEXT;
+ALTER TABLE "StyleProfile" ADD COLUMN "userId" TEXT;
+ALTER TABLE "StyleExtractionTask" ADD COLUMN "userId" TEXT;
+ALTER TABLE "StyleExtractionTask" ADD COLUMN "sourceDocumentId" TEXT;
+ALTER TABLE "StyleExtractionTask" ADD COLUMN "metadataJson" TEXT;
+ALTER TABLE "WritingFormula" ADD COLUMN "userId" TEXT;
+
+CREATE INDEX IF NOT EXISTS "NovelGenre_userId_idx" ON "NovelGenre"("userId");
+CREATE INDEX IF NOT EXISTS "NovelStoryMode_userId_idx" ON "NovelStoryMode"("userId");
+CREATE INDEX IF NOT EXISTS "TitleLibrary_userId_idx" ON "TitleLibrary"("userId");
+CREATE INDEX IF NOT EXISTS "TitleLibrary_genreId_idx" ON "TitleLibrary"("genreId");
+CREATE INDEX IF NOT EXISTS "BaseCharacter_userId_idx" ON "BaseCharacter"("userId");
+CREATE INDEX IF NOT EXISTS "ImageGenerationTask_userId_idx" ON "ImageGenerationTask"("userId");
+CREATE INDEX IF NOT EXISTS "StyleProfile_userId_idx" ON "StyleProfile"("userId");
+CREATE INDEX IF NOT EXISTS "StyleExtractionTask_userId_idx" ON "StyleExtractionTask"("userId");
+CREATE INDEX IF NOT EXISTS "StyleExtractionTask_sourceDocumentId_idx" ON "StyleExtractionTask"("sourceDocumentId");
+CREATE INDEX IF NOT EXISTS "WritingFormula_userId_idx" ON "WritingFormula"("userId");
