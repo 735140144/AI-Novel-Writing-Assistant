@@ -15,3 +15,14 @@ test("billing management page uses stable empty query fallbacks to avoid render 
   assert.doesNotMatch(billingManagementPageSource, /const packageTemplates = packageTemplatesQuery\.data\?\.data \?\? \[\]/);
   assert.doesNotMatch(billingManagementPageSource, /const redeemCodes = redeemCodesQuery\.data\?\.data \?\? \[\]/);
 });
+
+test("billing management page adds model prices from enabled configured provider models", () => {
+  assert.match(billingManagementPageSource, /getAPIKeySettings/);
+  assert.match(billingManagementPageSource, /enabledProviderOptions/);
+  assert.match(billingManagementPageSource, /provider\.isActive && provider\.isConfigured/);
+  assert.match(billingManagementPageSource, /currentModel/);
+  assert.match(billingManagementPageSource, /新增模型价格/);
+  assert.match(billingManagementPageSource, /请选择已启用供应商/);
+  assert.doesNotMatch(billingManagementPageSource, /<Input[^>]+value=\{newModelPriceForm\.provider\}/);
+  assert.doesNotMatch(billingManagementPageSource, /<Input[^>]+value=\{newModelPriceForm\.model\}/);
+});

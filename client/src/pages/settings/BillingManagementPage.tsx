@@ -10,6 +10,7 @@ import {
   updateBillingPackageTemplate,
   updateBillingRedeemCodeStatus,
 } from "@/api/billing";
+import { getAPIKeySettings, type APIKeyStatus } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,11 @@ type ModelPriceForm = {
   outputPricePerM: string;
   cacheHitPricePerM: string;
   isActive: boolean;
+};
+
+type NewModelPriceForm = ModelPriceForm & {
+  provider: string;
+  model: string;
 };
 
 type PackageTemplateForm = {
@@ -48,6 +54,15 @@ const emptyTemplateForm: PackageTemplateForm = {
   isActive: true,
 };
 
+const emptyNewModelPriceForm: NewModelPriceForm = {
+  provider: "",
+  model: "",
+  inputPricePerM: "0",
+  outputPricePerM: "0",
+  cacheHitPricePerM: "0",
+  isActive: true,
+};
+
 const EMPTY_MODEL_PRICES: ReadonlyArray<{
   id: string;
   provider: string;
@@ -59,6 +74,8 @@ const EMPTY_MODEL_PRICES: ReadonlyArray<{
   createdAt: string;
   updatedAt: string;
 }> = [];
+
+const EMPTY_PROVIDER_CONFIGS: ReadonlyArray<APIKeyStatus> = [];
 
 const EMPTY_PACKAGE_TEMPLATES: ReadonlyArray<{
   id: string;
@@ -113,6 +130,16 @@ function getRedeemStatusLabel(status: "unused" | "redeemed" | "expired" | "disab
   }
 }
 
+function getUniqueModels(models: Array<string | null | undefined>) {
+  return Array.from(
+    new Set(
+      models
+        .map((item) => item?.trim() ?? "")
+        .filter(Boolean),
+    ),
+  );
+}
+
 export default function BillingManagementPage() {
   const queryClient = useQueryClient();
   const [result, setResult] = useState("");
@@ -120,8 +147,13 @@ export default function BillingManagementPage() {
   const [redeemTemplateId, setRedeemTemplateId] = useState("");
   const [redeemCount, setRedeemCount] = useState("1");
   const [templateForm, setTemplateForm] = useState<PackageTemplateForm>(emptyTemplateForm);
+  const [newModelPriceForm, setNewModelPriceForm] = useState<NewModelPriceForm>(emptyNewModelPriceForm);
   const [modelForms, setModelForms] = useState<Record<string, ModelPriceForm>>({});
 
+  const providerConfigsQuery = useQuery({
+    queryKey: queryKeys.settings.apiKeys,
+    queryFn: getAPIKeySettings,
+  });
   const modelPricesQuery = useQuery({
     queryKey: queryKeys.settings.billingModelPrices,
     queryFn: getBillingModelPrices,
@@ -135,9 +167,35 @@ export default function BillingManagementPage() {
     queryFn: getBillingRedeemCodes,
   });
 
+  const providerConfigs = providerConfigsQuery.data?.data ?? EMPTY_PROVIDER_CONFIGS;
   const modelPrices = modelPricesQuery.data?.data ?? EMPTY_MODEL_PRICES;
   const packageTemplates = packageTemplatesQuery.data?.data ?? EMPTY_PACKAGE_TEMPLATES;
   const redeemCodes = redeemCodesQuery.data?.data ?? EMPTY_REDEEM_CODES;
+
+  const modelPriceKeys = useMemo(
+    () => new Set(modelPrices.map((item) => `${item.provider}::${item.model}`)),
+    [modelPrices],
+  );
+  const enabledProviderOptions = useMemo(
+    () =>
+      providerConfigs
+        .filter((provider) => provider.isActive && provider.isConfigured)
+        .map((provider) => {
+          const allModels = getUniqueModels([provider.currentModel, ...provider.models]);
+          const models = allModels.filter((model) => !modelPriceKeys.has(`${provider.provider}::${model}`));
+          return {
+            provider: provider.provider,
+            name: provider.displayName ?? provider.name,
+            models,
+          };
+        })
+        .filter((provider) => provider.models.length > 0),
+    [modelPriceKeys, providerConfigs],
+  );
+  const selectedNewModelProvider = useMemo(
+    () => enabledProviderOptions.find((item) => item.provider === newModelPriceForm.provider) ?? null,
+    [enabledProviderOptions, newModelPriceForm.provider],
+  );
 
   const selectedTemplate = useMemo(
     () => packageTemplates.find((item) => item.id === templateId) ?? null,
@@ -162,6 +220,34 @@ export default function BillingManagementPage() {
       return next;
     });
   }, [modelPrices]);
+
+  useEffect(() => {
+    setNewModelPriceForm((current) => {
+      const currentProvider = enabledProviderOptions.find((item) => item.provider === current.provider);
+      if (currentProvider) {
+        const nextModel = currentProvider.models.includes(current.model)
+          ? current.model
+          : currentProvider.models[0] ?? "";
+        if (nextModel === current.model) {
+          return current;
+        }
+        return { ...current, model: nextModel };
+      }
+
+      const nextProvider = enabledProviderOptions[0];
+      if (!nextProvider) {
+        if (!current.provider && !current.model) {
+          return current;
+        }
+        return { ...current, provider: "", model: "" };
+      }
+      return {
+        ...current,
+        provider: nextProvider.provider,
+        model: nextProvider.models[0] ?? "",
+      };
+    });
+  }, [enabledProviderOptions]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -206,6 +292,41 @@ export default function BillingManagementPage() {
     onSuccess: async (response) => {
       setResult(response.message ?? "模型价格已保存。");
       await refreshAll();
+    },
+  });
+
+  const addModelPriceMutation = useMutation({
+    mutationFn: () => {
+      if (!newModelPriceForm.provider) {
+        throw new Error("请选择已启用供应商。");
+      }
+      if (!newModelPriceForm.model) {
+        throw new Error("请选择模型。");
+      }
+      return saveBillingModelPrices([
+        {
+          provider: newModelPriceForm.provider,
+          model: newModelPriceForm.model,
+          inputPricePerM: Number(newModelPriceForm.inputPricePerM) || 0,
+          outputPricePerM: Number(newModelPriceForm.outputPricePerM) || 0,
+          cacheHitPricePerM: Number(newModelPriceForm.cacheHitPricePerM) || 0,
+          isActive: newModelPriceForm.isActive,
+        },
+      ]);
+    },
+    onSuccess: async (response) => {
+      setResult(response.message ?? "模型价格已新增。");
+      setNewModelPriceForm((current) => ({
+        ...current,
+        inputPricePerM: "0",
+        outputPricePerM: "0",
+        cacheHitPricePerM: "0",
+        isActive: true,
+      }));
+      await refreshAll();
+    },
+    onError: (error) => {
+      setResult(error instanceof Error ? error.message : "新增模型价格失败。");
     },
   });
 
@@ -286,11 +407,107 @@ export default function BillingManagementPage() {
       <Card>
         <CardHeader>
           <CardTitle>模型价格</CardTitle>
-          <CardDescription>按 1M tokens 设置输入、输出和缓存命中价格。</CardDescription>
+          <CardDescription>从已启用供应商的模型列表选择模型，并按 1M tokens 设置输入、输出和缓存命中价格。</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
+          <div className="space-y-3 rounded-md border p-3">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">新增模型价格</div>
+              <div className="text-xs text-muted-foreground">可选模型来自系统设置中已启用且可用的供应商。</div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
+              <label className="space-y-1 text-sm lg:col-span-2">
+                <div className="text-xs text-muted-foreground">供应商</div>
+                <Select
+                  value={newModelPriceForm.provider}
+                  onValueChange={(provider) => {
+                    const providerOption = enabledProviderOptions.find((item) => item.provider === provider);
+                    setNewModelPriceForm((current) => ({
+                      ...current,
+                      provider,
+                      model: providerOption?.models[0] ?? "",
+                    }));
+                  }}
+                  disabled={enabledProviderOptions.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="请选择已启用供应商" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {enabledProviderOptions.map((item) => (
+                      <SelectItem key={item.provider} value={item.provider}>
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="space-y-1 text-sm lg:col-span-2">
+                <div className="text-xs text-muted-foreground">模型</div>
+                <Select
+                  value={newModelPriceForm.model}
+                  onValueChange={(model) => setNewModelPriceForm((current) => ({ ...current, model }))}
+                  disabled={!selectedNewModelProvider}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择模型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(selectedNewModelProvider?.models ?? []).map((model) => (
+                      <SelectItem key={model} value={model}>
+                        {model}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="space-y-1 text-sm">
+                <div className="text-xs text-muted-foreground">输入</div>
+                <Input
+                  value={newModelPriceForm.inputPricePerM}
+                  onChange={(event) => setNewModelPriceForm((current) => ({ ...current, inputPricePerM: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <div className="text-xs text-muted-foreground">输出</div>
+                <Input
+                  value={newModelPriceForm.outputPricePerM}
+                  onChange={(event) => setNewModelPriceForm((current) => ({ ...current, outputPricePerM: event.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 text-sm">
+                <div className="text-xs text-muted-foreground">缓存命中</div>
+                <Input
+                  value={newModelPriceForm.cacheHitPricePerM}
+                  onChange={(event) => setNewModelPriceForm((current) => ({ ...current, cacheHitPricePerM: event.target.value }))}
+                />
+              </label>
+              <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 lg:col-span-3">
+                <div>
+                  <div className="text-sm font-medium">启用价格</div>
+                  <div className="text-xs text-muted-foreground">启用后该模型可参与钱包扣费。</div>
+                </div>
+                <Switch
+                  checked={newModelPriceForm.isActive}
+                  onCheckedChange={(checked) => setNewModelPriceForm((current) => ({ ...current, isActive: checked }))}
+                />
+              </div>
+              <div className="flex items-end lg:col-span-3">
+                <Button
+                  onClick={() => addModelPriceMutation.mutate()}
+                  disabled={!newModelPriceForm.provider || !newModelPriceForm.model || addModelPriceMutation.isPending}
+                >
+                  新增模型价格
+                </Button>
+              </div>
+            </div>
+            {enabledProviderOptions.length === 0 ? (
+              <div className="text-xs text-muted-foreground">可维护价格的模型已全部配置，或没有已启用的供应商模型。</div>
+            ) : null}
+          </div>
+
           {modelPrices.length === 0 ? (
-            <div className="text-sm text-muted-foreground">暂无模型价格。</div>
+            <div className="text-sm text-muted-foreground">从已启用供应商的模型列表新增价格，配置后模型调用才能扣费。</div>
           ) : (
             modelPrices.map((item) => {
               const form = modelForms[item.id] ?? {
@@ -364,7 +581,10 @@ export default function BillingManagementPage() {
               );
             })
           )}
-          <Button onClick={() => saveModelPricesMutation.mutate()} disabled={saveModelPricesMutation.isPending}>
+          <Button
+            onClick={() => saveModelPricesMutation.mutate()}
+            disabled={modelPrices.length === 0 || saveModelPricesMutation.isPending}
+          >
             保存模型价格
           </Button>
         </CardContent>
