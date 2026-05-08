@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { z } from "zod";
-import { authMiddleware } from "../middleware/auth";
+import { prisma } from "../db/prisma";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
 import { AutoDirectorFollowUpActionExecutor } from "../services/task/autoDirectorFollowUps/AutoDirectorFollowUpActionExecutor";
@@ -76,17 +76,28 @@ function verifyWeComMarkdownSignature(input: {
   }
 }
 
-router.use(authMiddleware);
+async function resolveTaskOwnerUserId(taskId: string): Promise<string> {
+  const task = await prisma.novelWorkflowTask.findUnique({
+    where: { id: taskId },
+    select: { userId: true },
+  });
+  const userId = task?.userId?.trim();
+  if (!userId) {
+    throw new AppError("Callback task owner was not found.", 404);
+  }
+  return userId;
+}
 
 router.post("/dingtalk", validate({ body: dingtalkCallbackBodySchema }), async (req, res, next) => {
   try {
-    const settings = await getAutoDirectorChannelSettings();
+    const body = req.body as z.infer<typeof dingtalkCallbackBodySchema>;
+    const ownerUserId = await resolveTaskOwnerUserId(body.taskId);
+    const settings = await getAutoDirectorChannelSettings({ userId: ownerUserId });
     verifyChannelToken(
       settings.dingtalk.callbackToken,
       req.header("x-auto-director-dingtalk-token") ?? undefined,
       "DingTalk",
     );
-    const body = req.body as z.infer<typeof dingtalkCallbackBodySchema>;
     const operatorId = resolveMappedOperatorId(
       settings.dingtalk.operatorMapJson,
       body.userId,
@@ -127,13 +138,14 @@ router.post("/dingtalk", validate({ body: dingtalkCallbackBodySchema }), async (
 
 router.post("/wecom", validate({ body: wecomCallbackBodySchema }), async (req, res, next) => {
   try {
-    const settings = await getAutoDirectorChannelSettings();
+    const body = req.body as z.infer<typeof wecomCallbackBodySchema>;
+    const ownerUserId = await resolveTaskOwnerUserId(body.taskId);
+    const settings = await getAutoDirectorChannelSettings({ userId: ownerUserId });
     verifyChannelToken(
       settings.wecom.callbackToken,
       req.header("x-auto-director-wecom-token") ?? undefined,
       "WeCom",
     );
-    const body = req.body as z.infer<typeof wecomCallbackBodySchema>;
     const operatorId = resolveMappedOperatorId(
       settings.wecom.operatorMapJson,
       body.userId,
@@ -174,8 +186,9 @@ router.post("/wecom", validate({ body: wecomCallbackBodySchema }), async (req, r
 
 router.get("/wecom/execute", validate({ query: wecomMarkdownQuerySchema }), async (req, res, next) => {
   try {
-    const settings = await getAutoDirectorChannelSettings();
     const query = req.query as z.infer<typeof wecomMarkdownQuerySchema>;
+    const ownerUserId = await resolveTaskOwnerUserId(query.taskId);
+    const settings = await getAutoDirectorChannelSettings({ userId: ownerUserId });
     verifyWeComMarkdownSignature({
       callbackId: query.callbackId,
       eventId: query.eventId,

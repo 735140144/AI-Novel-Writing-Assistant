@@ -26,3 +26,4 @@ export * from "./types/billing";
 export * from "./types/novelWorkflow";
 export * from "./types/volumePlanning";
 export * from "./types/canonicalState";
+export * from "./types/publishing";

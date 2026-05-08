@@ -4,8 +4,14 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { authMiddleware } from "../middleware/auth";
+import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
 import { characterLibrarySyncService } from "../services/character/CharacterLibrarySyncService";
+import {
+  applyOwnedBaseCharacterWhere,
+  buildOwnedBaseCharacterWhere,
+  requireCurrentBaseCharacterUserId,
+} from "../services/character/baseCharacterOwnership";
 import { characterGenerateConstraintsSchema, generateBaseCharacterFromAI } from "../services/character/characterGenerate";
 
 const router = Router();
@@ -54,7 +60,7 @@ router.get("/", validate({ query: listQuerySchema }), async (req, res, next) => 
   try {
     const query = req.query as z.infer<typeof listQuerySchema>;
     const data = await prisma.baseCharacter.findMany({
-      where: {
+      where: applyOwnedBaseCharacterWhere({
         category: query.category ? { equals: query.category } : undefined,
         tags: query.tags ? { contains: query.tags } : undefined,
         OR: query.search
@@ -69,7 +75,7 @@ router.get("/", validate({ query: listQuerySchema }), async (req, res, next) => 
               { tags: { contains: query.search } },
             ]
           : undefined,
-      },
+      }),
       orderBy: { updatedAt: "desc" },
     });
     res.status(200).json({
@@ -84,9 +90,11 @@ router.get("/", validate({ query: listQuerySchema }), async (req, res, next) => 
 
 router.post("/", validate({ body: baseCharacterSchema }), async (req, res, next) => {
   try {
+    const userId = requireCurrentBaseCharacterUserId();
     const data = await prisma.baseCharacter.create({
       data: {
         ...req.body,
+        userId,
         tags: req.body.tags ?? "",
       },
     });
@@ -104,8 +112,8 @@ router.post("/", validate({ body: baseCharacterSchema }), async (req, res, next)
 router.get("/:id", validate({ params: idSchema }), async (req, res, next) => {
   try {
     const { id } = req.params as z.infer<typeof idSchema>;
-    const data = await prisma.baseCharacter.findUnique({
-      where: { id },
+    const data = await prisma.baseCharacter.findFirst({
+      where: buildOwnedBaseCharacterWhere(id),
     });
     if (!data) {
       res.status(404).json({
@@ -130,6 +138,13 @@ router.put(
   async (req, res, next) => {
     try {
       const { id } = req.params as z.infer<typeof idSchema>;
+      const existing = await prisma.baseCharacter.findFirst({
+        where: buildOwnedBaseCharacterWhere(id),
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new AppError("角色不存在。", 404);
+      }
       const data = await prisma.baseCharacter.update({
         where: { id },
         data: req.body as z.infer<typeof updateBaseCharacterSchema>,
@@ -154,6 +169,13 @@ router.put(
 router.delete("/:id", validate({ params: idSchema }), async (req, res, next) => {
   try {
     const { id } = req.params as z.infer<typeof idSchema>;
+    const existing = await prisma.baseCharacter.findFirst({
+      where: buildOwnedBaseCharacterWhere(id),
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError("角色不存在。", 404);
+    }
     await prisma.baseCharacter.delete({ where: { id } });
     res.status(200).json({
       success: true,

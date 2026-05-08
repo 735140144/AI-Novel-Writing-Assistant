@@ -1,4 +1,8 @@
 import { prisma } from "../../db/prisma";
+import {
+  applyOwnedBaseCharacterWhere,
+  buildOwnedBaseCharacterWhere,
+} from "../../services/character/baseCharacterOwnership";
 import { AgentToolError, type AgentToolName } from "../types";
 import type { AgentToolDefinition } from "./toolTypes";
 import {
@@ -32,7 +36,7 @@ export const characterToolDefinitions: Partial<
     execute: async (_context, rawInput) => {
       const input = listBaseCharactersInputSchema.parse(rawInput);
       const rows = await prisma.baseCharacter.findMany({
-        where: {
+        where: applyOwnedBaseCharacterWhere({
           ...(input.category ? { category: input.category } : {}),
           ...(input.search
             ? {
@@ -45,7 +49,7 @@ export const characterToolDefinitions: Partial<
               ],
             }
             : {}),
-        },
+        }),
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: input.limit ?? 20,
       });
@@ -74,8 +78,8 @@ export const characterToolDefinitions: Partial<
     outputSchema: getBaseCharacterDetailOutputSchema,
     execute: async (_context, rawInput) => {
       const input = baseCharacterIdInputSchema.parse(rawInput);
-      const row = await prisma.baseCharacter.findUnique({
-        where: { id: input.characterId },
+      const row = await prisma.baseCharacter.findFirst({
+        where: buildOwnedBaseCharacterWhere(input.characterId),
       });
       if (!row) {
         throw new AgentToolError("NOT_FOUND", "Base character not found.");

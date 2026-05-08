@@ -1,4 +1,6 @@
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import {
   buildFieldDiff,
   safeParseJSON,
@@ -11,7 +13,22 @@ interface WorldSnapshotCallbacks {
   queueWorldUpsert: (worldId: string) => void;
 }
 
+async function getRequiredWorld(worldId: string) {
+  const context = getRequestContext();
+  const world = await prisma.world.findFirst({
+    where:
+      context?.authMode === "session" && context.userId
+        ? { id: worldId, userId: context.userId }
+        : { id: worldId },
+  });
+  if (!world) {
+    throw new AppError("世界观不存在。", 404);
+  }
+  return world;
+}
+
 export async function listWorldSnapshots(worldId: string) {
+  await getRequiredWorld(worldId);
   return prisma.worldSnapshot.findMany({
     where: { worldId },
     orderBy: { createdAt: "desc" },
@@ -19,10 +36,7 @@ export async function listWorldSnapshots(worldId: string) {
 }
 
 export async function createWorldSnapshot(worldId: string, label?: string) {
-  const world = await prisma.world.findUnique({ where: { id: worldId } });
-  if (!world) {
-    throw new Error("World not found.");
-  }
+  const world = await getRequiredWorld(worldId);
   return prisma.worldSnapshot.create({
     data: {
       worldId,
@@ -37,6 +51,7 @@ export async function restoreWorldSnapshot(
   snapshotId: string,
   callbacks: WorldSnapshotCallbacks,
 ) {
+  await getRequiredWorld(worldId);
   const snapshot = await prisma.worldSnapshot.findFirst({
     where: { id: snapshotId, worldId },
   });
@@ -82,6 +97,7 @@ export async function restoreWorldSnapshot(
 }
 
 export async function diffWorldSnapshots(worldId: string, fromId: string, toId: string) {
+  await getRequiredWorld(worldId);
   const [fromSnapshot, toSnapshot] = await Promise.all([
     prisma.worldSnapshot.findFirst({ where: { id: fromId, worldId } }),
     prisma.worldSnapshot.findFirst({ where: { id: toId, worldId } }),

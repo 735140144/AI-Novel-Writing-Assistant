@@ -10,6 +10,7 @@ import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { NovelCreateResourceRecommendation } from "@ai-novel/shared/types/novelResourceRecommendation";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { novelCreateResourceRecommendationPrompt } from "../../prompting/prompts/novel/resourceRecommendation.prompts";
+import { getRequestContext } from "../../runtime/requestContext";
 import { ensureSystemResourceStarterData } from "../bootstrap/SystemResourceBootstrapService";
 import { GenreService, type GenreTreeNode } from "../genre/GenreService";
 import { StoryModeService, type StoryModeTreeNode } from "../storyMode/StoryModeService";
@@ -176,7 +177,10 @@ export class NovelCreateResourceRecommendationService {
   private readonly storyModeService = new StoryModeService();
 
   async recommend(input: RecommendNovelCreateResourcesInput): Promise<NovelCreateResourceRecommendation> {
-    await ensureSystemResourceStarterData();
+    const userId = getRequestContext()?.userId?.trim();
+    if (userId) {
+      await ensureSystemResourceStarterData({ userId });
+    }
 
     const [genreTree, storyModeTree] = await Promise.all([
       this.genreService.listGenreTree(),

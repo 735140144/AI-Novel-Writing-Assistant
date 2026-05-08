@@ -5,6 +5,7 @@ import type {
   ModelRouteTaskType,
 } from "@ai-novel/shared/types/novel";
 import { prisma } from "../db/prisma";
+import { getRequestContext } from "../runtime/requestContext";
 import { isBuiltInProvider, PROVIDERS } from "./providers";
 import type { StructuredOutputStrategy } from "./structuredOutput";
 
@@ -216,6 +217,12 @@ function normalizeTaskType(taskType: TaskType): ModelRouteTaskType | "default" {
   return "default";
 }
 
+function resolveScopedUserId(scope?: {
+  userId?: string;
+}): string | undefined {
+  return scope?.userId ?? getRequestContext()?.userId;
+}
+
 export async function resolveModel(
   taskType: TaskType,
   userOverride?: {
@@ -226,14 +233,29 @@ export async function resolveModel(
     requestProtocol?: ModelRouteRequestProtocol;
     structuredResponseFormat?: ModelRouteStructuredResponseFormat;
   },
+  scope?: {
+    userId?: string;
+  },
 ): Promise<ResolvedModel> {
   const normalizedTaskType = normalizeTaskType(taskType);
   const base = DEFAULT_ROUTES[normalizedTaskType] ?? DEFAULT_ROUTES.default;
+  const scopedUserId = resolveScopedUserId(scope);
 
   try {
-    const row = await prisma.modelRouteConfig.findUnique({
+    const userScopedRow = scopedUserId
+      ? await prisma.userModelRouteConfig.findUnique({
+          where: {
+            userId_taskType: {
+              userId: scopedUserId,
+              taskType: normalizedTaskType,
+            },
+          },
+        })
+      : null;
+    const globalRow = await prisma.modelRouteConfig.findUnique({
       where: { taskType: normalizedTaskType },
     });
+    const row = userScopedRow ?? globalRow;
     if (row) {
       const provider = normalizeProviderId(row.provider);
       const routePreferences = normalizeRoutePreferences({
@@ -264,29 +286,41 @@ export async function listModelRouteConfigs(): Promise<Array<{
   maxTokens: number | null;
   requestProtocol: ModelRouteRequestProtocol;
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
+}>>;
+export async function listModelRouteConfigs(scope: {
+  userId: string;
+}): Promise<Array<{
+  taskType: string;
+  provider: string;
+  model: string;
+  temperature: number;
+  maxTokens: number | null;
+  requestProtocol: ModelRouteRequestProtocol;
+  structuredResponseFormat: ModelRouteStructuredResponseFormat;
+}>>;
+export async function listModelRouteConfigs(scope?: {
+  userId?: string;
+}): Promise<Array<{
+  taskType: string;
+  provider: string;
+  model: string;
+  temperature: number;
+  maxTokens: number | null;
+  requestProtocol: ModelRouteRequestProtocol;
+  structuredResponseFormat: ModelRouteStructuredResponseFormat;
 }>> {
-  try {
-    const rows = await prisma.modelRouteConfig.findMany({
-      orderBy: { taskType: "asc" },
-    });
-    return rows.map((r) => {
-      const provider = normalizeProviderId(r.provider);
-      const routePreferences = normalizeRoutePreferences({
-        requestProtocol: "requestProtocol" in r ? r.requestProtocol : null,
-        structuredResponseFormat: "structuredResponseFormat" in r ? r.structuredResponseFormat : null,
-      });
-      return {
-        provider,
-        taskType: r.taskType,
-        model: r.model,
-        temperature: r.temperature,
-        maxTokens: normalizeMaxTokens(provider, r.maxTokens ?? undefined) ?? null,
-        ...routePreferences,
-      };
-    });
-  } catch {
-    return [];
-  }
+  return Promise.all(MODEL_ROUTE_TASK_TYPES.map(async (taskType) => {
+    const route = await resolveModel(taskType, undefined, scope);
+    return {
+      taskType,
+      provider: route.provider,
+      model: route.model,
+      temperature: route.temperature,
+      maxTokens: route.maxTokens ?? null,
+      requestProtocol: route.requestProtocol,
+      structuredResponseFormat: route.structuredResponseFormat,
+    };
+  }));
 }
 
 export async function upsertModelRouteConfig(
@@ -299,9 +333,13 @@ export async function upsertModelRouteConfig(
     requestProtocol?: string | null;
     structuredResponseFormat?: string | null;
   },
+  scope?: {
+    userId?: string;
+  },
 ): Promise<void> {
   const normalizedTaskType = normalizeTaskType(taskType as TaskType);
   const provider = normalizeProviderId(data.provider);
+  const scopedUserId = resolveScopedUserId(scope);
   const normalizedMaxTokens = normalizeMaxTokens(provider, data.maxTokens ?? undefined) ?? null;
   const {
     requestProtocol,
@@ -310,6 +348,36 @@ export async function upsertModelRouteConfig(
     requestProtocol: data.requestProtocol,
     structuredResponseFormat: data.structuredResponseFormat,
   });
+  if (scopedUserId) {
+    await prisma.userModelRouteConfig.upsert({
+      where: {
+        userId_taskType: {
+          userId: scopedUserId,
+          taskType: normalizedTaskType,
+        },
+      },
+      create: {
+        userId: scopedUserId,
+        taskType: normalizedTaskType,
+        provider,
+        model: data.model,
+        temperature: data.temperature ?? 0.7,
+        maxTokens: normalizedMaxTokens,
+        requestProtocol,
+        structuredResponseFormat,
+      },
+      update: {
+        provider,
+        model: data.model,
+        temperature: data.temperature ?? 0.7,
+        maxTokens: normalizedMaxTokens,
+        requestProtocol,
+        structuredResponseFormat,
+      },
+    });
+    return;
+  }
+
   await prisma.modelRouteConfig.upsert({
     where: { taskType: normalizedTaskType },
     create: {

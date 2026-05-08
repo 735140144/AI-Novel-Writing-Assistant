@@ -45,10 +45,8 @@ function resolveDevProxyTarget(): string {
 
 clearStaleOptimizeCache(__dirname);
 
-const isDesktopRelativeBaseBuild = process.env.AI_NOVEL_CLIENT_BASE === "relative";
-
 export default defineConfig({
-  base: isDesktopRelativeBaseBuild ? "./" : "/",
+  base: "/",
   plugins: [react()],
   resolve: {
     alias: {

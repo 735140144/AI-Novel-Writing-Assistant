@@ -1,4 +1,4 @@
-import type { APIKeyStatus } from "@/api/settings";
+import type { APIKeyStatus, PublicProviderStatus } from "@/api/settings";
 import SearchableSelect from "@/components/common/SearchableSelect";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,7 +17,7 @@ import type {
 
 interface ModelRouteFieldsProps {
   draft: RouteDraft;
-  providerConfigs: APIKeyStatus[];
+  providerConfigs: Array<APIKeyStatus | PublicProviderStatus>;
   providerOptions: string[];
   onPatch: (patch: Partial<RouteDraft>) => void;
   temperaturePlaceholder: string;

@@ -16,6 +16,11 @@ import { ensureNovelCharacters } from "./novelCoreSupport";
 import { createQualityReport } from "./novelCoreReviewService";
 import { selectPrimaryPipelineJob } from "./pipelineJobDedup";
 import { buildPipelineCurrentItemLabel, buildPipelineStageProgress, decoratePipelineJob as decoratePipelineJobRow, isPipelineActiveStage, parsePipelinePayload as parsePipelineJobPayload, stringifyPipelinePayload as stringifyPipelineJobPayload, type DecoratedPipelineJob, type PipelineActiveStage, type PipelineJobLike } from "./pipelineJobState";
+import {
+  applyOwnedGenerationJobWhere,
+  buildOwnedGenerationJobWhere,
+  resolveOwnedTaskUserId,
+} from "../task/taskOwnership";
 
 export { buildPipelineCurrentItemLabel, buildPipelineStageProgress } from "./pipelineJobState";
 
@@ -90,13 +95,13 @@ export class NovelCorePipelineService {
 
   private async listActivePipelineJobsForRange(novelId: string, startOrder: number, endOrder: number) {
     return prisma.generationJob.findMany({
-      where: {
+      where: applyOwnedGenerationJobWhere({
         novelId,
         startOrder,
         endOrder,
         status: { in: ["queued", "running"] },
         pendingManualRecovery: false,
-      },
+      }),
       orderBy: [
         { completedCount: "desc" },
         { progress: "desc" },
@@ -162,12 +167,12 @@ export class NovelCorePipelineService {
 
   async listRecoverablePipelineJobs(): Promise<Array<{ id: string; status: string }>> {
     const rows = await prisma.generationJob.findMany({
-      where: {
+      where: applyOwnedGenerationJobWhere({
         status: { in: ["queued", "running"] },
         pendingManualRecovery: false,
         finishedAt: null,
         cancelRequestedAt: null,
-      },
+      }),
       select: {
         id: true,
         status: true,
@@ -182,10 +187,10 @@ export class NovelCorePipelineService {
 
   async listPendingCancellationPipelineJobs(): Promise<Array<{ id: string; status: string }>> {
     const rows = await prisma.generationJob.findMany({
-      where: {
+      where: applyOwnedGenerationJobWhere({
         finishedAt: null,
         cancelRequestedAt: { not: null },
-      },
+      }),
       select: {
         id: true,
         status: true,
@@ -200,7 +205,7 @@ export class NovelCorePipelineService {
 
   async listStaleRecoverablePipelineJobs(cutoff: Date): Promise<Array<{ id: string; status: string }>> {
     const rows = await prisma.generationJob.findMany({
-      where: {
+      where: applyOwnedGenerationJobWhere({
         status: { in: ["queued", "running"] },
         pendingManualRecovery: false,
         finishedAt: null,
@@ -209,7 +214,7 @@ export class NovelCorePipelineService {
           { heartbeatAt: { lt: cutoff } },
           { heartbeatAt: null, updatedAt: { lt: cutoff } },
         ],
-      },
+      }),
       select: {
         id: true,
         status: true,
@@ -375,8 +380,13 @@ export class NovelCorePipelineService {
         model: options.model ?? "route",
       });
 
+      const userId = await resolveOwnedTaskUserId({
+        novelId,
+        fallbackToAdmin: false,
+      });
       const job = await prisma.generationJob.create({
         data: {
+          userId,
           novelId,
           startOrder: options.startOrder,
           endOrder: options.endOrder,
@@ -427,18 +437,22 @@ export class NovelCorePipelineService {
   }
 
   async getPipelineJob(novelId: string, jobId: string) {
-    const job = await prisma.generationJob.findFirst({ where: { id: jobId, novelId } });
+    const job = await prisma.generationJob.findFirst({
+      where: applyOwnedGenerationJobWhere({ id: jobId, novelId }),
+    });
     return job ? this.decoratePipelineJob(job) : null;
   }
 
   async getPipelineJobById(jobId: string) {
-    const job = await prisma.generationJob.findUnique({ where: { id: jobId } });
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(jobId),
+    });
     return job ? this.decoratePipelineJob(job) : null;
   }
 
   async retryPipelineJob(jobId: string) {
-    const job = await prisma.generationJob.findUnique({
-      where: { id: jobId },
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(jobId),
     });
     if (!job) {
       throw new Error("任务不存在。");
@@ -477,8 +491,8 @@ export class NovelCorePipelineService {
   }
 
   async cancelPipelineJob(jobId: string) {
-    const job = await prisma.generationJob.findUnique({
-      where: { id: jobId },
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(jobId),
     });
     if (!job) {
       throw new Error("任务不存在。");
@@ -521,8 +535,8 @@ export class NovelCorePipelineService {
   }
 
   private async ensurePipelineNotCancelled(jobId: string): Promise<void> {
-    const job = await prisma.generationJob.findUnique({
-      where: { id: jobId },
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(jobId),
       select: {
         status: true,
         cancelRequestedAt: true,
@@ -576,8 +590,8 @@ export class NovelCorePipelineService {
   private async executePipeline(jobId: string, novelId: string, options: PipelineRunOptions) {
     const maxRetries = options.maxRetries ?? 1;
     const qualityThreshold = options.qualityThreshold ?? 75;
-    const existingJob = await prisma.generationJob.findUnique({
-      where: { id: jobId },
+    const existingJob = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(jobId),
       select: {
         startedAt: true,
         completedCount: true,

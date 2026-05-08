@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { useQuery } from "@tanstack/react-query";
-import { getAPIKeySettings, type APIKeyStatus } from "@/api/settings";
+import { getLLMProviders, type PublicProviderStatus } from "@/api/settings";
 import { queryKeys } from "@/api/queryKeys";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -59,9 +59,9 @@ function clampMaxTokens(value: number): number {
   return Math.min(32768, Math.max(256, Math.floor(value)));
 }
 
-function isRunnableProvider(config: APIKeyStatus): boolean {
+function isRunnableProvider(config: PublicProviderStatus): boolean {
   const models = sanitizeModelList([config.currentModel, ...(config.models ?? [])]);
-  return config.isConfigured && config.isActive && models.length > 0;
+  return models.length > 0;
 }
 
 export default function LLMSelector({
@@ -85,15 +85,24 @@ export default function LLMSelector({
   const resolvedTemperature = currentValue.temperature ?? store.temperature;
   const resolvedMaxTokens = currentValue.maxTokens ?? store.maxTokens;
 
-  const apiKeySettingsQuery = useQuery({
-    queryKey: queryKeys.settings.apiKeys,
-    queryFn: getAPIKeySettings,
+  const providerCatalogQuery = useQuery({
+    queryKey: queryKeys.llm.providers,
+    queryFn: getLLMProviders,
     staleTime: 5 * 60 * 1000,
   });
 
   const providerConfigs = useMemo(
-    () => (apiKeySettingsQuery.data?.data ?? []).filter(isRunnableProvider),
-    [apiKeySettingsQuery.data?.data],
+    () =>
+      Object.entries(providerCatalogQuery.data?.data ?? {})
+        .map(([provider, value]) => ({
+          provider: provider as LLMProvider,
+          name: value.name,
+          displayName: value.name,
+          currentModel: value.defaultModel,
+          models: value.models,
+        }))
+        .filter(isRunnableProvider),
+    [providerCatalogQuery.data?.data],
   );
 
   const providerOptions = useMemo(
@@ -257,7 +266,7 @@ export default function LLMSelector({
         ) : null}
       </div>
 
-      {showHelperText && !hasRunnableProviders && !apiKeySettingsQuery.isLoading ? (
+      {showHelperText && !hasRunnableProviders && !providerCatalogQuery.isLoading ? (
         <div className="text-xs text-muted-foreground">
           当前没有已配置且启用的模型厂商，请先到系统设置里完成 API Key 和模型配置。
         </div>

@@ -9,6 +9,7 @@ import { prisma } from "../../db/prisma";
 import { runWithLlmUsageTracking } from "../../llm/usageTracking";
 import { AppError } from "../../middleware/errorHandler";
 import { getStyleEngineRuntimeSettings } from "../settings/StyleEngineRuntimeSettingsService";
+import { requireCurrentStyleProfileUserId } from "./styleProfileOwnership";
 import {
   buildStyleExtractionSourceInput,
   resolveStyleExtractionInputText,
@@ -20,6 +21,7 @@ import { StyleProfileService } from "./StyleProfileService";
 type PresetKey = "imitate" | "balanced" | "transfer";
 
 interface CreateStyleExtractionTaskInput {
+  userId?: string;
   name: string;
   sourceText: string;
   sourceType?: StyleExtractionTaskSourceType;
@@ -175,6 +177,7 @@ export class StyleExtractionTaskService {
   }
 
   async createTask(input: CreateStyleExtractionTaskInput) {
+    const userId = input.userId?.trim() || requireCurrentStyleProfileUserId();
     const sourceType = input.sourceType ?? "from_text";
     const sourceRefId = input.sourceRefId?.trim() || null;
     const sourceInput = buildStyleExtractionSourceInput({
@@ -184,6 +187,7 @@ export class StyleExtractionTaskService {
     });
     const createdTask = await prisma.styleExtractionTask.create({
       data: {
+        userId,
         name: input.name.trim(),
         category: input.category?.trim() || null,
         sourceText: input.sourceText,
@@ -566,6 +570,7 @@ export class StyleExtractionTaskService {
 
       const saveStartedAt = Date.now();
       const profile = await this.styleProfileService.createProfileFromExtraction({
+        ownerUserId: task.userId ?? undefined,
         name: task.name,
         sourceText: task.sourceText,
         category: task.category ?? undefined,

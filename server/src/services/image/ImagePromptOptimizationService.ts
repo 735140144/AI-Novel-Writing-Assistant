@@ -2,6 +2,7 @@ import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { runTextPrompt } from "../../prompting/core/promptRunner";
 import { imageCharacterPromptOptimizePrompt } from "../../prompting/prompts/image/image.prompts";
+import { buildOwnedBaseCharacterWhere } from "../character/baseCharacterOwnership";
 import type {
   ImagePromptOutputLanguage,
   OptimizeCharacterImagePromptRequest,
@@ -16,8 +17,8 @@ export class ImagePromptOptimizationService {
   async optimizeCharacterPrompt(
     input: OptimizeCharacterImagePromptRequest,
   ): Promise<OptimizedCharacterImagePrompt> {
-    const character = await prisma.baseCharacter.findUnique({
-      where: { id: input.baseCharacterId },
+    const character = await prisma.baseCharacter.findFirst({
+      where: buildOwnedBaseCharacterWhere(input.baseCharacterId),
     });
     if (!character) {
       throw new AppError("Base character not found.", 404);

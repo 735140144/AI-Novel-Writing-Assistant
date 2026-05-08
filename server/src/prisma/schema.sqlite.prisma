@@ -333,6 +333,54 @@ enum CharacterGender {
   unknown
 }
 
+enum PublishingPlatform {
+  fanqie
+}
+
+enum PublishingCredentialStatus {
+  created
+  login_pending
+  ready
+  expired
+  invalid
+}
+
+enum NovelPlatformBindingStatus {
+  active
+  needs_validation
+  disabled
+}
+
+enum PublishMode {
+  draft
+  publish
+}
+
+enum PublishPlanStatus {
+  draft
+  ready
+  submitting
+  completed
+  failed
+}
+
+enum PublishItemStatus {
+  unpublished
+  submitting
+  draft_box
+  published
+  failed
+  relogin_required
+}
+
+enum PublishDispatchJobStatus {
+  queued
+  leased
+  running
+  completed
+  failed
+}
+
 model Novel {
   id                String      @id @default(cuid())
   userId            String?
@@ -416,6 +464,10 @@ model Novel {
   auditReports       AuditReport[]
   workflowTasks      NovelWorkflowTask[]
   autoApprovalRecords AutoDirectorAutoApprovalRecord[]
+  platformBindings   NovelPlatformBinding[]
+  publishPlans       PublishPlan[]
+  publishPlanItems   PublishPlanItem[]
+  publishDispatchJobs PublishDispatchJob[]
   createdAt          DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
@@ -504,10 +556,150 @@ model Chapter {
   introducedCharacterResources CharacterResourceLedgerItem[] @relation("CharacterResourceIntroducedChapter")
   lastTouchedCharacterResources CharacterResourceLedgerItem[] @relation("CharacterResourceLastTouchedChapter")
   characterResourceEvents CharacterResourceEvent[]
+  publishPlanItems PublishPlanItem[]
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
 
   @@index([novelId, order])
+}
+
+model PublishingPlatformCredential {
+  id                       String                     @id @default(cuid())
+  userId                   String
+  platform                 PublishingPlatform         @default(fanqie)
+  label                    String
+  credentialUuid           String
+  status                   PublishingCredentialStatus @default(created)
+  accountId                String?
+  accountDisplayName       String?
+  lastValidatedAt          DateTime?
+  lastLoginChallengeId     String?
+  lastLoginChallengeStatus String?
+  lastLoginChallengeJson   String?
+  user                     User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bindings                 NovelPlatformBinding[]
+  dispatchJobs             PublishDispatchJob[]
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+
+  @@unique([platform, credentialUuid])
+  @@unique([userId, platform, credentialUuid])
+  @@index([userId, platform, status])
+}
+
+model NovelPlatformBinding {
+  id              String                      @id @default(cuid())
+  novelId         String
+  credentialId    String
+  platform        PublishingPlatform          @default(fanqie)
+  bookId          String
+  bookTitle       String
+  status          NovelPlatformBindingStatus  @default(active)
+  lastValidatedAt DateTime?
+  novel           Novel                       @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  credential      PublishingPlatformCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  plans           PublishPlan[]
+  dispatchJobs    PublishDispatchJob[]
+  publishPlanItems PublishPlanItem[]
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  @@unique([novelId, platform])
+  @@index([credentialId])
+  @@index([novelId, platform, status])
+}
+
+model PublishPlan {
+  id                     String                    @id @default(cuid())
+  novelId                String
+  bindingId              String
+  platform               PublishingPlatform        @default(fanqie)
+  mode                   PublishMode               @default(draft)
+  instruction            String
+  structuredScheduleJson String
+  resolvedScheduleJson   String
+  timezone               String                    @default("Asia/Shanghai")
+  startChapterOrder      Int?
+  endChapterOrder        Int?
+  chaptersPerDay         Int
+  publishTimeOfDay       String
+  status                 PublishPlanStatus         @default(ready)
+  novel                  Novel                     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  binding                NovelPlatformBinding      @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  items                  PublishPlanItem[]
+  dispatchJobs           PublishDispatchJob[]
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  @@index([novelId, status, createdAt])
+  @@index([bindingId, status, createdAt])
+}
+
+model PublishPlanItem {
+  id                 String                   @id @default(cuid())
+  planId             String
+  novelId            String
+  bindingId          String
+  chapterId          String
+  chapterOrder       Int
+  chapterTitle       String
+  volumeTitle        String?
+  plannedPublishTime String
+  status             PublishItemStatus        @default(unpublished)
+  dispatchJobId      String?
+  externalJobId      String?
+  dispatchStatus     PublishDispatchJobStatus?
+  submittedAt        DateTime?
+  publishedAt        DateTime?
+  lastError          String?
+  plan               PublishPlan              @relation(fields: [planId], references: [id], onDelete: Cascade)
+  novel              Novel                    @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  binding            NovelPlatformBinding     @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  chapter            Chapter                  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  dispatchJob        PublishDispatchJob?      @relation(fields: [dispatchJobId], references: [id], onDelete: SetNull)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  @@unique([planId, chapterId])
+  @@index([novelId, status, plannedPublishTime])
+  @@index([bindingId, plannedPublishTime])
+  @@index([chapterId])
+  @@index([dispatchJobId])
+}
+
+model PublishDispatchJob {
+  id                 String                    @id @default(cuid())
+  novelId            String
+  bindingId          String
+  credentialId       String
+  planId             String?
+  requestId          String                    @unique
+  externalJobId      String?
+  platform           PublishingPlatform        @default(fanqie)
+  mode               PublishMode
+  plannedPublishTime String
+  status             PublishDispatchJobStatus  @default(queued)
+  credentialUuid     String
+  bookId             String
+  bookTitle          String
+  chapterCount       Int
+  payloadSummaryJson String?
+  resultJson         String?
+  lastError          String?
+  submittedAt        DateTime?
+  completedAt        DateTime?
+  novel              Novel                     @relation(fields: [novelId], references: [id], onDelete: Cascade)
+  binding            NovelPlatformBinding      @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  credential         PublishingPlatformCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  plan               PublishPlan?              @relation(fields: [planId], references: [id], onDelete: SetNull)
+  items              PublishPlanItem[]
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  @@index([novelId, createdAt])
+  @@index([bindingId, plannedPublishTime])
+  @@index([credentialId])
+  @@index([externalJobId])
 }
 
 model Character {
@@ -1316,6 +1508,7 @@ model User {
   billingPackageGrants BillingPackageGrant[]
   billingUsageRecords BillingUsageRecord[]
   billingDailyUsageSummaries BillingDailyUsageSummary[]
+  publishingCredentials PublishingPlatformCredential[]
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
 }

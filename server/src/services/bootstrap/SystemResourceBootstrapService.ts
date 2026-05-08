@@ -254,6 +254,13 @@ const BUILT_IN_GENRE_SEEDS: GenreSeedNode[] = [
   },
 ];
 
+function resolveScopedSeedId(seedId: string, userId: string | null): string {
+  if (!userId) {
+    return seedId;
+  }
+  return `${userId}:${seedId}`;
+}
+
 function mergeBootstrapReport(
   base: SystemResourceBootstrapReport,
   patch: Partial<SystemResourceBootstrapReport>,
@@ -290,42 +297,53 @@ async function seedGenreNode(
   tx: Prisma.TransactionClient,
   node: GenreSeedNode,
   parentId: string | null,
+  userId: string | null,
   mode: SystemResourceSeedMode,
 ): Promise<Pick<SystemResourceBootstrapReport, "genresCreated" | "genresUpdated">> {
+  const scopedId = resolveScopedSeedId(node.id, userId);
   let report = { genresCreated: 0, genresUpdated: 0 };
   const existing = await tx.novelGenre.findUnique({
-    where: { id: node.id },
+    where: { id: scopedId },
     select: { id: true },
   });
 
-  if (existing) {
-    if (mode === "sync_existing") {
-      await tx.novelGenre.update({
-        where: { id: node.id },
-        data: {
-          name: node.name,
-          description: node.description,
-          template: node.template,
-          parentId,
-        },
-      });
-      report = { genresCreated: 0, genresUpdated: 1 };
-    }
-  } else {
-    await tx.novelGenre.create({
-      data: {
-        id: node.id,
+  if (!existing || mode === "sync_existing") {
+    await tx.novelGenre.upsert({
+      where: { id: scopedId },
+      update: {
+        name: node.name,
+        description: node.description,
+        template: node.template,
+        userId,
+        parentId,
+      },
+      create: {
+        id: scopedId,
+        userId,
         name: node.name,
         description: node.description,
         template: node.template,
         parentId,
       },
     });
+  }
+
+  if (existing) {
+    if (mode === "sync_existing") {
+      report = { genresCreated: 0, genresUpdated: 1 };
+    }
+  } else {
     report = { genresCreated: 1, genresUpdated: 0 };
   }
 
   for (const child of node.children ?? []) {
-    const childReport = await seedGenreNode(tx, child, node.id, mode);
+    const childReport = await seedGenreNode(
+      tx,
+      child,
+      resolveScopedSeedId(node.id, userId),
+      userId,
+      mode,
+    );
     report = {
       genresCreated: report.genresCreated + childReport.genresCreated,
       genresUpdated: report.genresUpdated + childReport.genresUpdated,
@@ -339,15 +357,18 @@ async function seedStoryModeNode(
   tx: Prisma.TransactionClient,
   node: StoryModeSeedNode["children"][number] | StoryModeSeedNode,
   parentId: string | null,
+  userId: string | null,
   mode: SystemResourceSeedMode,
 ): Promise<Pick<SystemResourceBootstrapReport, "storyModesCreated" | "storyModesUpdated">> {
+  const scopedId = resolveScopedSeedId(node.id, userId);
   let report = { storyModesCreated: 0, storyModesUpdated: 0 };
   const existing = await tx.novelStoryMode.findUnique({
-    where: { id: node.id },
+    where: { id: scopedId },
     select: { id: true },
   });
 
   const data = {
+    userId,
     name: node.name,
     description: node.description,
     template: node.template,
@@ -355,27 +376,34 @@ async function seedStoryModeNode(
     parentId,
   };
 
-  if (existing) {
-    if (mode === "sync_existing") {
-      await tx.novelStoryMode.update({
-        where: { id: node.id },
-        data,
-      });
-      report = { storyModesCreated: 0, storyModesUpdated: 1 };
-    }
-  } else {
-    await tx.novelStoryMode.create({
-      data: {
-        id: node.id,
+  if (!existing || mode === "sync_existing") {
+    await tx.novelStoryMode.upsert({
+      where: { id: scopedId },
+      update: data,
+      create: {
+        id: scopedId,
         ...data,
       },
     });
+  }
+
+  if (existing) {
+    if (mode === "sync_existing") {
+      report = { storyModesCreated: 0, storyModesUpdated: 1 };
+    }
+  } else {
     report = { storyModesCreated: 1, storyModesUpdated: 0 };
   }
 
   if ("children" in node && Array.isArray(node.children)) {
     for (const child of node.children) {
-      const childReport = await seedStoryModeNode(tx, child, node.id, mode);
+      const childReport = await seedStoryModeNode(
+        tx,
+        child,
+        resolveScopedSeedId(node.id, userId),
+        userId,
+        mode,
+      );
       report = {
         storyModesCreated: report.storyModesCreated + childReport.storyModesCreated,
         storyModesUpdated: report.storyModesUpdated + childReport.storyModesUpdated,
@@ -584,15 +612,19 @@ export async function seedStyleEngineStarterData(
 export async function ensureSystemResourceStarterData(
   options: {
     mode?: SystemResourceSeedMode;
+    userId?: string | null;
+    includeStyleEngine?: boolean;
   } = {},
 ): Promise<SystemResourceBootstrapReport> {
   const mode = options.mode ?? "missing_only";
+  const userId = options.userId ?? null;
+  const includeStyleEngine = options.includeStyleEngine ?? (userId == null);
   let report = { ...EMPTY_BOOTSTRAP_REPORT };
 
   const genreReport = await prisma.$transaction(async (tx) => {
     let acc = { genresCreated: 0, genresUpdated: 0 };
     for (const root of BUILT_IN_GENRE_SEEDS) {
-      const seeded = await seedGenreNode(tx, root, null, mode);
+      const seeded = await seedGenreNode(tx, root, null, userId, mode);
       acc = {
         genresCreated: acc.genresCreated + seeded.genresCreated,
         genresUpdated: acc.genresUpdated + seeded.genresUpdated,
@@ -605,7 +637,7 @@ export async function ensureSystemResourceStarterData(
   const storyModeReport = await prisma.$transaction(async (tx) => {
     let acc = { storyModesCreated: 0, storyModesUpdated: 0 };
     for (const root of BUILT_IN_STORY_MODE_SEEDS) {
-      const seeded = await seedStoryModeNode(tx, root, null, mode);
+      const seeded = await seedStoryModeNode(tx, root, null, userId, mode);
       acc = {
         storyModesCreated: acc.storyModesCreated + seeded.storyModesCreated,
         storyModesUpdated: acc.storyModesUpdated + seeded.storyModesUpdated,
@@ -615,10 +647,85 @@ export async function ensureSystemResourceStarterData(
   });
   report = mergeBootstrapReport(report, storyModeReport);
 
-  const styleReport = await seedStyleEngineStarterData(mode);
-  report = mergeBootstrapReport(report, styleReport);
+  if (includeStyleEngine) {
+    const styleReport = await seedStyleEngineStarterData(mode);
+    report = mergeBootstrapReport(report, styleReport);
+  }
 
   return report;
+}
+
+export async function assignLegacyCreativeResourcesToUser(userId: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await tx.novel.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.world.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.knowledgeDocument.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.bookAnalysis.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.novelGenre.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.novelStoryMode.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.titleLibrary.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.worldPropertyLibrary.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.baseCharacter.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.imageGenerationTask.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.styleProfile.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.styleExtractionTask.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+    await tx.writingFormula.updateMany({
+      where: { userId: null },
+      data: { userId },
+    });
+  });
+}
+
+export async function ensureAdminCreativeResources(userId: string): Promise<void> {
+  await assignLegacyCreativeResourcesToUser(userId);
+
+  const [novelCount, genreCount, storyModeCount] = await Promise.all([
+    prisma.novel.count({ where: { userId } }),
+    prisma.novelGenre.count({ where: { userId } }),
+    prisma.novelStoryMode.count({ where: { userId } }),
+  ]);
+
+  if (novelCount > 0 && genreCount > 0 && storyModeCount > 0) {
+    return;
+  }
+
+  await ensureSystemResourceStarterData({ userId });
 }
 
 export function hasSystemResourceBootstrapChanges(report: SystemResourceBootstrapReport): boolean {

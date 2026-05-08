@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { NOVEL_EXPORT_FORMAT_VALUES, NOVEL_EXPORT_SCOPE_VALUES } from "@ai-novel/shared/types/novelExport";
 import { authMiddleware } from "../middleware/auth";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { validate } from "../middleware/validate";
 import { novelExportService } from "../services/novel/NovelExportService";
 
@@ -17,6 +18,9 @@ const exportQuerySchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("id", (req, res, next, id) => {
+  void requireOwnedNovel(req, res, next, id);
+});
 
 router.get(
   "/:id/export",

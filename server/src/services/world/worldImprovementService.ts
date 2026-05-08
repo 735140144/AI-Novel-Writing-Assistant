@@ -1,11 +1,13 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { WorldConsistencyReport, WorldLayerKey } from "@ai-novel/shared/types/world";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import {
   worldConsistencyPrompt,
   worldDeepeningQuestionsPrompt,
 } from "../../prompting/prompts/world/world.prompts";
+import { getRequestContext } from "../../runtime/requestContext";
 import { buildConsistencySummary, localizeConsistencyIssue } from "./worldConsistency";
 import {
   type DeepeningAnswerInput,
@@ -23,9 +25,15 @@ interface WorldImprovementCallbacks {
 }
 
 async function getRequiredWorld(worldId: string) {
-  const world = await prisma.world.findUnique({ where: { id: worldId } });
+  const context = getRequestContext();
+  const world = await prisma.world.findFirst({
+    where:
+      context?.authMode === "session" && context.userId
+        ? { id: worldId, userId: context.userId }
+        : { id: worldId },
+  });
   if (!world) {
-    throw new Error("World not found.");
+    throw new AppError("世界观不存在。", 404);
   }
   return world;
 }

@@ -1,5 +1,6 @@
 import type { BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
 import { prisma } from "../../db/prisma";
+import { applyOwnedBookAnalysisWhere, buildOwnedBookAnalysisWhere } from "../bookAnalysis/bookAnalysisOwnership";
 import {
   listActiveKnowledgeDocumentContents,
   resolveKnowledgeDocumentIds,
@@ -205,10 +206,10 @@ export class NovelReferenceService {
     }
 
     const analyses = await prisma.bookAnalysis.findMany({
-      where: {
+      where: applyOwnedBookAnalysisWhere({
         documentId: { in: documentIds },
         status: "succeeded",
-      },
+      }),
       include: {
         document: { select: { title: true } },
         documentVersion: { select: { versionNumber: true } },
@@ -232,7 +233,7 @@ export class NovelReferenceService {
   private async resolveAnalysisById(analysisId: string): Promise<ResolvedAnalysis | null> {
     const analysis = await prisma.bookAnalysis.findFirst({
       where: {
-        id: analysisId,
+        ...buildOwnedBookAnalysisWhere(analysisId),
         status: "succeeded",
       },
       include: {

@@ -9,7 +9,14 @@ import type {
   StyleTemplate,
 } from "@ai-novel/shared/types/styleEngine";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
+import { getOwnedBookAnalysisScope } from "../bookAnalysis/bookAnalysisOwnership";
+import {
+  applyOwnedStyleProfileWhere,
+  buildOwnedStyleProfileWhere,
+  requireCurrentStyleProfileUserId,
+} from "./styleProfileOwnership";
 import {
   styleProfileAntiAiSelectionPrompt,
   styleProfileExtractionPrompt,
@@ -42,6 +49,7 @@ import {
 } from "./styleExtraction";
 
 interface ManualProfileInput {
+  ownerUserId?: string;
   name: string;
   description?: string;
   category?: string;
@@ -178,6 +186,7 @@ export class StyleProfileService {
   async listProfiles(): Promise<StyleProfile[]> {
     await ensureStyleEngineSeedData();
     const rows = await prisma.styleProfile.findMany({
+      where: applyOwnedStyleProfileWhere(),
       include: {
         antiAiBindings: {
           where: { enabled: true },
@@ -191,8 +200,8 @@ export class StyleProfileService {
 
   async getProfileById(id: string): Promise<StyleProfile | null> {
     await ensureStyleEngineSeedData();
-    const row = await prisma.styleProfile.findUnique({
-      where: { id },
+    const row = await prisma.styleProfile.findFirst({
+      where: buildOwnedStyleProfileWhere(id),
       include: {
         antiAiBindings: {
           where: { enabled: true },
@@ -205,8 +214,10 @@ export class StyleProfileService {
 
   async createManualProfile(input: ManualProfileInput): Promise<StyleProfile> {
     await ensureStyleEngineSeedData();
+    const userId = input.ownerUserId?.trim() || requireCurrentStyleProfileUserId();
     const row = await prisma.styleProfile.create({
       data: {
+        userId,
         name: input.name,
         description: input.description,
         category: input.category,
@@ -247,6 +258,13 @@ export class StyleProfileService {
     input: Omit<ManualProfileInput, "sourceType"> & { status?: string },
   ): Promise<StyleProfile> {
     await ensureStyleEngineSeedData();
+    const existing = await prisma.styleProfile.findFirst({
+      where: buildOwnedStyleProfileWhere(id),
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError("写法资产不存在。", 404);
+    }
     const normalizedExtractedFeatures = input.extractedFeatures
       ? normalizeStyleProfileFeatures(input.extractedFeatures)
       : null;
@@ -304,6 +322,13 @@ export class StyleProfileService {
   }
 
   async deleteProfile(id: string): Promise<void> {
+    const existing = await prisma.styleProfile.findFirst({
+      where: buildOwnedStyleProfileWhere(id),
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError("写法资产不存在。", 404);
+    }
     await prisma.styleProfile.delete({ where: { id } });
   }
 
@@ -346,6 +371,7 @@ export class StyleProfileService {
   }
 
   async createFromText(input: {
+    ownerUserId?: string;
     name: string;
     sourceText: string;
     category?: string;
@@ -354,6 +380,7 @@ export class StyleProfileService {
     const balancedPreset = draft.presets.find((item) => item.key === DEFAULT_EXTRACTION_PRESET_KEY)
       ?? draft.presets[0];
     return this.createProfileFromExtraction({
+      ownerUserId: input.ownerUserId,
       name: input.name,
       sourceText: input.sourceText,
       category: input.category,
@@ -381,6 +408,7 @@ export class StyleProfileService {
   }
 
   async createProfileFromExtraction(input: {
+    ownerUserId?: string;
     name: string;
     sourceText: string;
     category?: string;
@@ -402,6 +430,7 @@ export class StyleProfileService {
     const antiAiRuleIds = await this.resolveAntiAiRuleIds(normalizedDraft.antiAiRuleKeys);
 
     return this.createManualProfile({
+      ownerUserId: input.ownerUserId,
       name: input.name.trim() || normalizedDraft.name,
       description: normalizedDraft.description
         ?? `${sourceType === "from_knowledge_document" ? "基于知识库原文提取生成" : "基于文本提取生成"}，保留 ${input.decisions.filter((item) => item.decision === "keep").length} 项特征，弱化 ${input.decisions.filter((item) => item.decision === "weaken").length} 项特征。`,
@@ -426,15 +455,23 @@ export class StyleProfileService {
   }
 
   async createFromBookAnalysis(input: {
+    ownerUserId?: string;
     bookAnalysisId: string;
     name: string;
   } & LlmInput): Promise<StyleProfile> {
     await ensureStyleEngineSeedData();
+    const scope = getOwnedBookAnalysisScope();
     const section = await prisma.bookAnalysisSection.findFirst({
-      where: {
-        analysisId: input.bookAnalysisId,
-        sectionKey: "style_technique",
-      },
+      where: scope.enforce
+        ? {
+          analysisId: input.bookAnalysisId,
+          sectionKey: "style_technique",
+          analysis: { userId: scope.userId },
+        }
+        : {
+          analysisId: input.bookAnalysisId,
+          sectionKey: "style_technique",
+        },
       include: {
         analysis: true,
       },
@@ -462,6 +499,7 @@ export class StyleProfileService {
       fallbackName: input.name,
     });
     return this.persistGeneratedProfile({
+      ownerUserId: input.ownerUserId,
       inputName: input.name,
       sourceType: "from_book_analysis",
       sourceRefId: input.bookAnalysisId,
@@ -471,6 +509,7 @@ export class StyleProfileService {
   }
 
   async createFromBrief(input: {
+    ownerUserId?: string;
     brief: string;
     name?: string;
     category?: string;
@@ -492,6 +531,7 @@ export class StyleProfileService {
       fallbackName: input.name?.trim() || generatedCore.name?.trim() || "AI 生成写法",
     });
     return this.persistGeneratedProfile({
+      ownerUserId: input.ownerUserId,
       inputName: input.name?.trim() || generated.name?.trim() || "AI 生成写法",
       sourceType: "manual",
       sourceRefId: `${AI_STYLE_BRIEF_SOURCE_PREFIX}${Date.now()}`,
@@ -833,6 +873,7 @@ export class StyleProfileService {
   }
 
   private async persistGeneratedProfile(input: {
+    ownerUserId?: string;
     inputName: string;
     sourceType: StyleSourceType;
     sourceRefId?: string;
@@ -841,6 +882,7 @@ export class StyleProfileService {
   }): Promise<StyleProfile> {
     const antiAiRuleIds = await this.resolveAntiAiRuleIds(input.generated.antiAiRuleKeys ?? []);
     return this.createManualProfile({
+      ownerUserId: input.ownerUserId,
       name: input.generated.name?.trim() || input.inputName,
       description: input.generated.description ?? undefined,
       category: input.generated.category ?? undefined,

@@ -26,6 +26,8 @@ server/src/prisma/dev.db-journal
 .logs/
 .tmp/
 server/.tmp/
+.local-db-backups/
+.merge-check-*/
 desktop/build/
 desktop/runtime-migration-smoke/
 server/prisma-diff-migrations-to-schema.sql

@@ -2,6 +2,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import type { BaseMessageChunk } from "@langchain/core/messages";
 import { featureFlags } from "../../config/featureFlags";
 import { prisma } from "../../db/prisma";
+import { getRequestContext } from "../../runtime/requestContext";
 import { createWorldBuildingGraph } from "../../graphs/worldBuildingGraph";
 import { getLLM } from "../../llm/factory";
 import { streamStructuredPrompt, streamTextPrompt } from "../../prompting/core/promptRunner";
@@ -28,6 +29,15 @@ import type { RagOwnerType } from "../rag/types";
 interface WorldDraftCallbacks {
   createSnapshot: (worldId: string, label?: string) => Promise<unknown>;
   queueRagUpsert: (ownerType: RagOwnerType, ownerId: string) => void;
+}
+
+function resolveOwnedWorldUserId(): string | null {
+  const context = getRequestContext();
+  const userId = context?.userId?.trim();
+  if (context?.authMode === "session" && userId) {
+    return userId;
+  }
+  return null;
 }
 
 function createStaticChunkStream(content: string): AsyncIterable<BaseMessageChunk> {
@@ -80,6 +90,7 @@ async function persistGeneratedWorld(
   }, bindingSupport);
   const world = await prisma.world.create({
     data: {
+      userId: resolveOwnedWorldUserId(),
       name: input.name,
       worldType: input.worldType,
       description: (structuredFields.description as string | null | undefined) ?? normalized.description,

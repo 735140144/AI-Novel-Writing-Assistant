@@ -10,12 +10,17 @@ import {
   AUTO_DIRECTOR_CHANNEL_TYPES,
 } from "@ai-novel/shared/types/autoDirectorFollowUp";
 import { prisma } from "../../../db/prisma";
+import { getRequestContext } from "../../../runtime/requestContext";
 import { NovelWorkflowService } from "../../novel/workflow/NovelWorkflowService";
 import { NovelWorkflowTaskAdapter } from "../adapters/NovelWorkflowTaskAdapter";
 import {
   getArchivedTaskIds,
   isTaskArchived,
 } from "../taskArchive";
+import {
+  applyOwnedNovelWorkflowTaskWhere,
+  buildOwnedNovelWorkflowTaskWhere,
+} from "../taskOwnership";
 import { getAutoDirectorChannelSettings } from "../../settings/AutoDirectorChannelSettingsService";
 import {
   buildAvailableReasons,
@@ -63,7 +68,7 @@ export class AutoDirectorFollowUpService {
     const rows = await this.loadRows();
     const knownTaskIds = new Set(rows.map((row) => row.id));
     const taskById = new Map(rows.map((row) => [row.id, row]));
-    const channelSettings = await getAutoDirectorChannelSettings();
+    const channelSettings = await getAutoDirectorChannelSettings({ userId: getRequestContext()?.userId });
     const taskItems = rows
       .map((row) => projectFollowUpItem(row, knownTaskIds, channelSettings))
       .filter((item): item is AutoDirectorFollowUpItem => Boolean(item));
@@ -81,7 +86,7 @@ export class AutoDirectorFollowUpService {
     const rows = await this.loadRows();
     const knownTaskIds = new Set(rows.map((row) => row.id));
     const taskById = new Map(rows.map((row) => [row.id, row]));
-    const channelSettings = await getAutoDirectorChannelSettings();
+    const channelSettings = await getAutoDirectorChannelSettings({ userId: getRequestContext()?.userId });
     const scopedRows = rows.filter((row) => matchesRowScopeFilters(row, input));
     const scopedTaskItems = scopedRows
       .map((row) => projectFollowUpItem(row, knownTaskIds, channelSettings))
@@ -124,8 +129,8 @@ export class AutoDirectorFollowUpService {
       await this.workflowService.healAutoDirectorTaskState(taskId);
     }
 
-    const rawRow = await prisma.novelWorkflowTask.findUnique({
-      where: { id: taskId },
+    const rawRow = await prisma.novelWorkflowTask.findFirst({
+      where: buildOwnedNovelWorkflowTaskWhere(taskId),
       include: {
         novel: {
           select: {
@@ -142,15 +147,19 @@ export class AutoDirectorFollowUpService {
     const knownTaskIds = new Set([row.id]);
     const replacementTaskId = getReplacementTaskId(row.seedPayloadJson);
     if (replacementTaskId) {
-      const replacement = await prisma.novelWorkflowTask.findUnique({
-        where: { id: replacementTaskId },
+      const replacement = await prisma.novelWorkflowTask.findFirst({
+        where: buildOwnedNovelWorkflowTaskWhere(replacementTaskId),
         select: { id: true },
       });
       if (replacement) {
         knownTaskIds.add(replacement.id);
       }
     }
-    const item = projectFollowUpItem(row, knownTaskIds, await getAutoDirectorChannelSettings());
+    const item = projectFollowUpItem(
+      row,
+      knownTaskIds,
+      await getAutoDirectorChannelSettings({ userId: getRequestContext()?.userId }),
+    );
     if (!item) {
       return null;
     }
@@ -248,7 +257,7 @@ export class AutoDirectorFollowUpService {
 
   private async fetchRows(archivedIds: string[]): Promise<FollowUpWorkflowRow[]> {
     const rawRows = await prisma.novelWorkflowTask.findMany({
-      where: {
+      where: applyOwnedNovelWorkflowTaskWhere({
         lane: "auto_director",
         ...(archivedIds.length > 0
           ? {
@@ -257,7 +266,7 @@ export class AutoDirectorFollowUpService {
             },
           }
           : {}),
-      },
+      }),
       include: {
         novel: {
           select: {

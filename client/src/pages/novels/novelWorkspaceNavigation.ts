@@ -7,7 +7,8 @@ export type NovelWorkspaceFlowTab =
   | "outline"
   | "structured"
   | "chapter"
-  | "pipeline";
+  | "pipeline"
+  | "publishing";
 
 export type NovelWorkspaceTab = NovelWorkspaceFlowTab | "history";
 
@@ -19,6 +20,7 @@ export const NOVEL_WORKSPACE_FLOW_STEPS: Array<{ key: NovelWorkspaceFlowTab; lab
   { key: "structured", label: "节奏 / 拆章" },
   { key: "chapter", label: "章节执行" },
   { key: "pipeline", label: "质量修复" },
+  { key: "publishing", label: "发布" },
 ];
 
 export const NOVEL_WORKSPACE_TOOL_TABS: Array<{ key: Extract<NovelWorkspaceTab, "history">; label: string }> = [
@@ -77,6 +79,7 @@ export function scopeFromWorkspaceTab(tab: string): DirectorLockScope | null {
   if (tab === "structured") return "structured";
   if (tab === "chapter") return "chapter";
   if (tab === "pipeline") return "pipeline";
+  if (tab === "publishing") return null;
   return null;
 }
 

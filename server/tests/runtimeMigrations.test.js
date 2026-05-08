@@ -113,21 +113,13 @@ function createSatisfiedBookAnalysisSourceCacheSchema(database) {
   `);
 }
 
-function withDesktopRuntime(databasePath, run) {
-  const previousRuntime = process.env.AI_NOVEL_RUNTIME;
+function withSqliteRuntime(databasePath, run) {
   const previousDatabaseUrl = process.env.DATABASE_URL;
-  process.env.AI_NOVEL_RUNTIME = "desktop";
   process.env.DATABASE_URL = `file:${databasePath}`;
 
   return Promise.resolve()
     .then(run)
     .finally(() => {
-      if (previousRuntime == null) {
-        delete process.env.AI_NOVEL_RUNTIME;
-      } else {
-        process.env.AI_NOVEL_RUNTIME = previousRuntime;
-      }
-
       if (previousDatabaseUrl == null) {
         delete process.env.DATABASE_URL;
       } else {
@@ -168,7 +160,7 @@ test("ensureRuntimeDatabaseReady finishes a pending migration record when schema
   }
 
   try {
-    await withDesktopRuntime(databasePath, () => ensureRuntimeDatabaseReady());
+    await withSqliteRuntime(databasePath, () => ensureRuntimeDatabaseReady());
 
     const verifyDb = new Database(databasePath, { readonly: true });
     try {
@@ -210,7 +202,7 @@ test("ensureRuntimeDatabaseReady records a missing migration when schema is alre
   }
 
   try {
-    await withDesktopRuntime(databasePath, () => ensureRuntimeDatabaseReady());
+    await withSqliteRuntime(databasePath, () => ensureRuntimeDatabaseReady());
 
     const verifyDb = new Database(databasePath, { readonly: true });
     try {

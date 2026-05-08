@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { validate } from "../middleware/validate";
 import { NovelDirectorService } from "../services/novel/director/NovelDirectorService";
 import { NovelWorkflowService } from "../services/novel/workflow/NovelWorkflowService";
@@ -72,6 +73,9 @@ const syncStageSchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("novelId", (req, res, next, novelId) => {
+  void requireOwnedNovel(req, res, next, novelId);
+});
 
 router.post("/bootstrap", validate({ body: bootstrapSchema }), async (req, res, next) => {
   try {

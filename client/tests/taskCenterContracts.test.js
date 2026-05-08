@@ -11,6 +11,13 @@ test("task center keeps finished tasks out of the default list and exposes one-c
   assert.match(taskCenterPage, /归档当前已完成\/已取消/);
 });
 
+test("task center batch archive flow guards optional response payloads", () => {
+  assert.match(taskCenterPage, /const archiveResult = response\.data/);
+  assert.doesNotMatch(taskCenterPage, /response\.data\.items/);
+  assert.doesNotMatch(taskCenterPage, /response\.data\.failedCount/);
+  assert.doesNotMatch(taskCenterPage, /response\.data\.archivedCount/);
+});
+
 test("director follow-up badge only counts pending and exception items", () => {
   assert.match(sidebar, /countersBySection/);
   assert.match(sidebar, /const pendingFollowUpCount = .*pending.*\?\? 0/);

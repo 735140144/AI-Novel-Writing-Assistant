@@ -4,6 +4,8 @@ import type {
   KnowledgeRecallTestResult,
 } from "@ai-novel/shared/types/knowledge";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import { ragServices } from "../rag";
 import {
   buildKnowledgeContentHash,
@@ -12,6 +14,33 @@ import {
 } from "./common";
 
 export class KnowledgeService {
+  private requireCurrentUserId(): string {
+    const userId = getRequestContext()?.userId?.trim();
+    if (!userId) {
+      throw new AppError("未登录，请先登录。", 401);
+    }
+    return userId;
+  }
+
+  private getOwnedKnowledgeScope():
+    | { enforce: true; userId: string }
+    | { enforce: false; userId: null } {
+    const context = getRequestContext();
+    const userId = context?.userId?.trim();
+    if (context?.authMode === "session" && userId) {
+      return { enforce: true, userId };
+    }
+    return { enforce: false, userId: null };
+  }
+
+  private buildOwnedKnowledgeWhere(documentId: string) {
+    const scope = this.getOwnedKnowledgeScope();
+    if (scope.enforce) {
+      return { id: documentId, userId: scope.userId };
+    }
+    return { id: documentId };
+  }
+
   private async loadLatestFailedIndexErrors(documentIds: string[]): Promise<Map<string, string | null>> {
     if (documentIds.length === 0) {
       return new Map();
@@ -52,16 +81,21 @@ export class KnowledgeService {
   }
 
   private async assertTargetExists(targetType: KnowledgeBindingTargetType, targetId: string): Promise<void> {
+    const scope = this.getOwnedKnowledgeScope();
     if (targetType === "novel") {
-      const exists = await prisma.novel.count({ where: { id: targetId } });
+      const exists = await prisma.novel.count({
+        where: scope.enforce ? { id: targetId, userId: scope.userId } : { id: targetId },
+      });
       if (!exists) {
-        throw new Error("Novel not found.");
+        throw new AppError("小说不存在。", 404);
       }
       return;
     }
-    const exists = await prisma.world.count({ where: { id: targetId } });
+    const exists = await prisma.world.count({
+      where: scope.enforce ? { id: targetId, userId: scope.userId } : { id: targetId },
+    });
     if (!exists) {
-      throw new Error("World not found.");
+      throw new AppError("世界观不存在。", 404);
     }
   }
 
@@ -69,9 +103,11 @@ export class KnowledgeService {
     keyword?: string;
     status?: KnowledgeDocumentStatus;
   } = {}) {
+    const scope = this.getOwnedKnowledgeScope();
     const keyword = filters.keyword?.trim();
     const rows = await prisma.knowledgeDocument.findMany({
       where: {
+        ...(scope.enforce ? { userId: scope.userId } : {}),
         ...(filters.status ? { status: filters.status } : { status: { not: "archived" } }),
         ...(keyword
           ? {
@@ -115,8 +151,8 @@ export class KnowledgeService {
   }
 
   async getDocumentById(documentId: string) {
-    const document = await prisma.knowledgeDocument.findUnique({
-      where: { id: documentId },
+    const document = await prisma.knowledgeDocument.findFirst({
+      where: this.buildOwnedKnowledgeWhere(documentId),
       include: {
       versions: {
           orderBy: [{ versionNumber: "desc" }, { createdAt: "desc" }],
@@ -177,6 +213,8 @@ export class KnowledgeService {
     fileName: string;
     content: string;
   }) {
+    const userId = this.requireCurrentUserId();
+    const scope = this.getOwnedKnowledgeScope();
     const normalizedContent = normalizeKnowledgeContent(input.content);
     const title = normalizeKnowledgeDocumentTitle(input.title, input.fileName);
     const contentHash = buildKnowledgeContentHash(normalizedContent);
@@ -184,6 +222,7 @@ export class KnowledgeService {
     const document = await prisma.$transaction(async (tx) => {
       const existing = await tx.knowledgeDocument.findFirst({
         where: {
+          ...(scope.enforce ? { userId: scope.userId } : {}),
           title,
           status: { not: "archived" },
         },
@@ -219,6 +258,7 @@ export class KnowledgeService {
 
       const created = await tx.knowledgeDocument.create({
         data: {
+          userId: scope.enforce ? userId : null,
           title,
           fileName: input.fileName.trim(),
           status: "enabled",
@@ -260,6 +300,7 @@ export class KnowledgeService {
     fileName?: string;
     content: string;
   }) {
+    const scope = this.getOwnedKnowledgeScope();
     const normalizedContent = normalizeKnowledgeContent(input.content);
     const contentHash = buildKnowledgeContentHash(normalizedContent);
 
@@ -267,11 +308,11 @@ export class KnowledgeService {
       const existing = await tx.knowledgeDocument.findUnique({
         where: { id: documentId },
       });
-      if (!existing) {
-        throw new Error("Knowledge document not found.");
+      if (!existing || (scope.enforce && existing.userId !== scope.userId)) {
+        throw new AppError("知识库文档不存在。", 404);
       }
       if (existing.status === "archived") {
-        throw new Error("Archived knowledge documents cannot accept new versions.");
+        throw new AppError("归档知识库文档不能新增版本。", 400);
       }
       const nextVersionNumber = existing.activeVersionNumber + 1;
       const version = await tx.knowledgeDocumentVersion.create({
@@ -308,7 +349,15 @@ export class KnowledgeService {
   }
 
   async activateVersion(documentId: string, versionId: string) {
+    const scope = this.getOwnedKnowledgeScope();
     const document = await prisma.$transaction(async (tx) => {
+      const existing = await tx.knowledgeDocument.findUnique({
+        where: { id: documentId },
+        select: { id: true, userId: true },
+      });
+      if (!existing || (scope.enforce && existing.userId !== scope.userId)) {
+        throw new AppError("知识库文档不存在。", 404);
+      }
       const version = await tx.knowledgeDocumentVersion.findFirst({
         where: {
           id: versionId,
@@ -316,7 +365,7 @@ export class KnowledgeService {
         },
       });
       if (!version) {
-        throw new Error("Knowledge document version not found.");
+        throw new AppError("知识库文档版本不存在。", 404);
       }
       return tx.knowledgeDocument.update({
         where: { id: documentId },
@@ -342,14 +391,14 @@ export class KnowledgeService {
   }
 
   async reindexDocument(documentId: string) {
-    const document = await prisma.knowledgeDocument.findUnique({
-      where: { id: documentId },
+    const document = await prisma.knowledgeDocument.findFirst({
+      where: this.buildOwnedKnowledgeWhere(documentId),
     });
     if (!document) {
-      throw new Error("Knowledge document not found.");
+      throw new AppError("知识库文档不存在。", 404);
     }
     if (!document.activeVersionId) {
-      throw new Error("Knowledge document has no active version.");
+      throw new AppError("知识库文档没有活动版本。", 400);
     }
     const updated = await prisma.knowledgeDocument.update({
       where: { id: documentId },
@@ -362,11 +411,11 @@ export class KnowledgeService {
   }
 
   async updateDocumentStatus(documentId: string, status: KnowledgeDocumentStatus) {
-    const document = await prisma.knowledgeDocument.findUnique({
-      where: { id: documentId },
+    const document = await prisma.knowledgeDocument.findFirst({
+      where: this.buildOwnedKnowledgeWhere(documentId),
     });
     if (!document) {
-      throw new Error("Knowledge document not found.");
+      throw new AppError("知识库文档不存在。", 404);
     }
     const updated = await prisma.knowledgeDocument.update({
       where: { id: documentId },
@@ -382,17 +431,17 @@ export class KnowledgeService {
   }
 
   async testDocumentRecall(documentId: string, query: string, limit = 6): Promise<KnowledgeRecallTestResult> {
-    const document = await prisma.knowledgeDocument.findUnique({
-      where: { id: documentId },
+    const document = await prisma.knowledgeDocument.findFirst({
+      where: this.buildOwnedKnowledgeWhere(documentId),
     });
     if (!document) {
-      throw new Error("Knowledge document not found.");
+      throw new AppError("知识库文档不存在。", 404);
     }
     if (document.status === "archived") {
-      throw new Error("Archived knowledge documents cannot be recall tested.");
+      throw new AppError("归档知识库文档不能进行召回测试。", 400);
     }
     if (document.latestIndexStatus !== "succeeded") {
-      throw new Error("Knowledge document recall test is only available after indexing succeeds.");
+      throw new AppError("知识库文档索引成功后才能进行召回测试。", 400);
     }
 
     const hits = await ragServices.hybridRetrievalService.retrieve(query, {
@@ -420,10 +469,12 @@ export class KnowledgeService {
 
   async listBindings(targetType: KnowledgeBindingTargetType, targetId: string) {
     await this.assertTargetExists(targetType, targetId);
+    const scope = this.getOwnedKnowledgeScope();
     const bindings = await prisma.knowledgeBinding.findMany({
       where: {
         targetType,
         targetId,
+        ...(scope.enforce ? { document: { userId: scope.userId } } : {}),
       },
       include: {
         document: {
@@ -450,15 +501,17 @@ export class KnowledgeService {
     await this.assertTargetExists(targetType, targetId);
     const uniqueDocumentIds = Array.from(new Set(documentIds.map((item) => item.trim()).filter(Boolean)));
     if (uniqueDocumentIds.length > 0) {
+      const scope = this.getOwnedKnowledgeScope();
       const documents = await prisma.knowledgeDocument.findMany({
         where: {
+          ...(scope.enforce ? { userId: scope.userId } : {}),
           id: { in: uniqueDocumentIds },
           status: { not: "archived" },
         },
         select: { id: true },
       });
       if (documents.length !== uniqueDocumentIds.length) {
-        throw new Error("Some knowledge documents are missing or archived.");
+        throw new AppError("指定的知识库文档不存在。", 400);
       }
     }
 

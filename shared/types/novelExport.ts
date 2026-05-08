@@ -7,6 +7,7 @@ export const NOVEL_EXPORT_SCOPE_VALUES = [
   "structured",
   "chapter",
   "pipeline",
+  "publishing",
 ] as const;
 
 export type NovelExportScope = (typeof NOVEL_EXPORT_SCOPE_VALUES)[number];
@@ -28,4 +29,5 @@ export const NOVEL_EXPORT_SCOPE_LABELS: Record<NovelExportScope, string> = {
   structured: "节奏 / 拆章",
   chapter: "章节执行",
   pipeline: "质量修复",
+  publishing: "发布",
 };

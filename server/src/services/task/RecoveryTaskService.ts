@@ -6,6 +6,7 @@ import type {
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { bookAnalysisService } from "../bookAnalysis/BookAnalysisService";
+import { applyOwnedBookAnalysisWhere } from "../bookAnalysis/bookAnalysisOwnership";
 import { imageGenerationService } from "../image/ImageGenerationService";
 import { NovelPipelineRuntimeService } from "../novel/NovelPipelineRuntimeService";
 import { NovelService } from "../novel/NovelService";
@@ -18,6 +19,10 @@ import {
 import { styleExtractionTaskService } from "../styleEngine/StyleExtractionTaskService";
 import { buildWorkflowExplainability } from "./novelWorkflowExplainability";
 import { buildTaskRecoveryHint } from "./taskSupport";
+import {
+  applyOwnedGenerationJobWhere,
+  applyOwnedNovelWorkflowTaskWhere,
+} from "./taskOwnership";
 
 interface RecoveryInitializationDeps {
   markPendingBookAnalysesForManualRecovery(): Promise<unknown>;
@@ -90,11 +95,11 @@ export class RecoveryTaskService {
       styleExtractionRows,
     ] = await Promise.all([
       prisma.novelWorkflowTask.findMany({
-        where: {
+        where: applyOwnedNovelWorkflowTaskWhere({
           lane: "auto_director",
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
-        },
+        }),
         select: {
           id: true,
           title: true,
@@ -117,10 +122,10 @@ export class RecoveryTaskService {
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       }),
       prisma.generationJob.findMany({
-        where: {
+        where: applyOwnedGenerationJobWhere({
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
-        },
+        }),
         select: {
           id: true,
           novelId: true,
@@ -140,10 +145,10 @@ export class RecoveryTaskService {
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       }),
       prisma.bookAnalysis.findMany({
-        where: {
+        where: applyOwnedBookAnalysisWhere({
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
-        },
+        }),
         select: {
           id: true,
           documentId: true,

@@ -1,4 +1,6 @@
 import { prisma } from "../../db/prisma";
+import { getRequestContext } from "../../runtime/requestContext";
+import { applyOwnedBookAnalysisWhere } from "../bookAnalysis/bookAnalysisOwnership";
 import { novelReferenceService } from "../novel/NovelReferenceService";
 
 const MAX_DOCUMENT_REFERENCE_CHARS = 2_400;
@@ -24,6 +26,11 @@ export async function buildReferenceContext(input: {
   knowledgeDocumentIds?: string[];
   bookAnalysisIds?: string[];
 }): Promise<string> {
+  const requestContext = getRequestContext();
+  const enforceOwnedKnowledge =
+    requestContext?.authMode === "session" && requestContext.userId?.trim()
+      ? requestContext.userId.trim()
+      : null;
   const knowledgeDocumentIds = dedupeIds(input.knowledgeDocumentIds);
   const bookAnalysisIds = dedupeIds(input.bookAnalysisIds);
 
@@ -43,6 +50,7 @@ export async function buildReferenceContext(input: {
       ? prisma.knowledgeDocument.findMany({
           where: {
             id: { in: knowledgeDocumentIds },
+            ...(enforceOwnedKnowledge ? { userId: enforceOwnedKnowledge } : {}),
             status: { not: "archived" },
           },
           include: {
@@ -65,10 +73,10 @@ export async function buildReferenceContext(input: {
       : Promise.resolve([]),
     bookAnalysisIds.length > 0
       ? prisma.bookAnalysis.findMany({
-          where: {
+          where: applyOwnedBookAnalysisWhere({
             id: { in: bookAnalysisIds },
             status: { not: "archived" },
-          },
+          }),
           include: {
             document: {
               select: {

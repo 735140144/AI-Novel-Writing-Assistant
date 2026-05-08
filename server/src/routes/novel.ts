@@ -4,6 +4,7 @@ import { MAX_VOLUME_COUNT } from "@ai-novel/shared/types/volumePlanning";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { authMiddleware } from "../middleware/auth";
 import { AppError } from "../middleware/errorHandler";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { NovelService } from "../services/novel/NovelService";
 import { NovelDraftOptimizeService } from "../services/novel/NovelDraftOptimizeService";
 import { chapterRuntimeRequestSchema } from "../services/novel/runtime/chapterRuntimeSchema";
@@ -18,6 +19,7 @@ import { registerNovelCharacterSyncRoutes } from "./novelCharacterSyncRoutes";
 import { registerNovelFramingRoutes } from "./novelFramingRoutes";
 import { registerNovelPlanningRoutes } from "./novelPlanningRoutes";
 import { registerNovelProductionRoutes } from "./novelProductionRoutes";
+import { registerNovelPublishingRoutes } from "./novelPublishingRoutes";
 import { registerNovelReviewRoutes } from "./novelReviewRoutes";
 import { registerNovelSnapshotCharacterRoutes } from "./novelSnapshotCharacterRoutes";
 import { registerNovelStoryMacroRoutes } from "./novelStoryMacroRoutes";
@@ -556,6 +558,9 @@ const aiRevisionPreviewSchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("id", (req, res, next, id) => {
+  void requireOwnedNovel(req, res, next, id);
+});
 
 registerNovelBaseRoutes({
   router,
@@ -647,6 +652,11 @@ registerNovelStoryMacroRoutes({
 });
 
 registerNovelWorldSliceRoutes({
+  router,
+  idParamsSchema,
+});
+
+registerNovelPublishingRoutes({
   router,
   idParamsSchema,
 });

@@ -5,6 +5,7 @@ import type { WorldLayerKey, WorldStructureSectionKey } from "@ai-novel/shared/t
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth";
 import { validate } from "../middleware/validate";
+import { requireOwnedWorld } from "../middleware/worldOwnership";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { initSSE, streamToSSE, writeSSEFrame } from "../llm/streaming";
 import { featureFlags } from "../config/featureFlags";
@@ -267,6 +268,9 @@ const worldImportSchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("id", (req, res, next, id) => {
+  void requireOwnedWorld(req, res, next, id);
+});
 
 router.get("/templates", requireWorldWizard, async (_req, res, next) => {
   try {

@@ -6,6 +6,10 @@ import type {
 import { prisma } from "../../../db/prisma";
 import { AppError } from "../../../middleware/errorHandler";
 import { bookAnalysisService } from "../../bookAnalysis/BookAnalysisService";
+import {
+  applyOwnedBookAnalysisWhere,
+  buildOwnedBookAnalysisWhere,
+} from "../../bookAnalysis/bookAnalysisOwnership";
 import { resolveLiveBookAnalysisStatus } from "../../bookAnalysis/bookAnalysis.status";
 import {
   buildTaskRecoveryHint,
@@ -38,7 +42,7 @@ export class BookTaskAdapter {
     }
     const archivedIds = await getArchivedTaskIds("book_analysis");
     const rows = await prisma.bookAnalysis.findMany({
-      where: {
+      where: applyOwnedBookAnalysisWhere({
         ...(statuses ? { status: { in: statuses } } : {}),
         ...(archivedIds.length
           ? {
@@ -55,7 +59,7 @@ export class BookTaskAdapter {
             ],
           }
           : {}),
-      },
+      }),
       include: {
         document: {
           select: {
@@ -126,8 +130,8 @@ export class BookTaskAdapter {
       return null;
     }
 
-    const row = await prisma.bookAnalysis.findUnique({
-      where: { id },
+    const row = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(id),
       include: {
         document: {
           select: {
@@ -241,8 +245,8 @@ export class BookTaskAdapter {
       return null;
     }
 
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(id),
     });
     if (!analysis) {
       throw new AppError("Task not found.", 404);

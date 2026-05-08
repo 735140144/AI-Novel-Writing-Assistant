@@ -18,6 +18,8 @@ import {
   BOOK_FRAMING_MAX_COMMERCIAL_TAGS,
 } from "@ai-novel/shared/types/novelFraming";
 import { DIRECTOR_AUTO_APPROVAL_POINTS } from "@ai-novel/shared/types/autoDirectorApproval";
+import { authMiddleware } from "../middleware/auth";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { validate } from "../middleware/validate";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { NovelDirectorService } from "../services/novel/director/NovelDirectorService";
@@ -164,6 +166,11 @@ const takeoverSchema = z.object({
   autoApproval: autoApprovalSchema,
   styleProfileId: z.string().trim().optional(),
 }).merge(llmOptionsSchema);
+
+router.use(authMiddleware);
+router.param("novelId", (req, res, next, novelId) => {
+  void requireOwnedNovel(req, res, next, novelId);
+});
 
 router.post("/candidates", validate({ body: candidatesSchema }), async (req, res, next) => {
   try {

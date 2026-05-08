@@ -42,6 +42,15 @@ import type {
 import type { BookAnalysisSectionKey } from "@ai-novel/shared/types/bookAnalysis";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { NovelExportDownloadFormat } from "@ai-novel/shared/types/novelExport";
+import type {
+  NovelPlatformBinding,
+  PublishDispatchJob,
+  PublishItemStatus,
+  PublishMode,
+  PublishPlan,
+  PublishingLoginChallenge,
+  PublishingPlatformCredential,
+} from "@ai-novel/shared/types/publishing";
 import type { ChapterRuntimePackage } from "@ai-novel/shared/types/chapterRuntime";
 import type {
   CharacterResourceContext,
@@ -426,6 +435,44 @@ export interface PipelineTabViewProps {
   directorTakeoverEntry?: ReactNode;
 }
 
+export interface PublishingTabViewProps {
+  novelId: string;
+  credentials: PublishingPlatformCredential[];
+  binding: NovelPlatformBinding | null;
+  activePlan: PublishPlan | null;
+  recentJobs: PublishDispatchJob[];
+  isLoading: boolean;
+  accountLabel: string;
+  onAccountLabelChange: (value: string) => void;
+  selectedCredentialId: string;
+  onSelectedCredentialIdChange: (value: string) => void;
+  bookId: string;
+  onBookIdChange: (value: string) => void;
+  bookTitle: string;
+  onBookTitleChange: (value: string) => void;
+  scheduleInstruction: string;
+  onScheduleInstructionChange: (value: string) => void;
+  selectedMode: PublishMode;
+  onSelectedModeChange: (value: PublishMode) => void;
+  latestChallenge: PublishingLoginChallenge | null;
+  onCreateCredential: () => void;
+  isCreatingCredential: boolean;
+  onBootstrapLogin: (credentialId: string, mode?: "create" | "refresh") => void;
+  bootstrappingCredentialId: string;
+  onValidateCredential: (credentialId: string) => void;
+  validatingCredentialId: string;
+  onSaveBinding: () => void;
+  isSavingBinding: boolean;
+  onGeneratePlan: () => void;
+  isGeneratingPlan: boolean;
+  onSubmitPlan: (mode: PublishMode) => void;
+  submittingMode: PublishMode | null;
+  onRefreshJob: (jobId: string) => void;
+  refreshingJobId: string;
+  statusLabels: Record<PublishItemStatus, string>;
+  message: string;
+}
+
 export interface CharacterTabViewProps {
   novelId: string;
   llmProvider?: LLMProvider;
@@ -545,6 +592,7 @@ export interface NovelEditViewProps {
   structuredTab: StructuredTabViewProps;
   chapterTab: ChapterTabViewProps;
   pipelineTab: PipelineTabViewProps;
+  publishingTab: PublishingTabViewProps;
   characterTab: CharacterTabViewProps;
   takeover?: NovelEditTakeoverState | null;
   taskDrawer?: NovelTaskDrawerState | null;

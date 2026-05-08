@@ -13,6 +13,11 @@ import {
   AgentStepType,
 } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import {
+  applyOwnedAgentRunWhere,
+  buildOwnedAgentRunWhere,
+  resolveOwnedTaskUserId,
+} from "../services/task/taskOwnership";
 
 function toAgentRun(row: {
   id: string;
@@ -137,8 +142,13 @@ export class AgentTraceStore {
     entryAgent: string;
     metadataJson?: string;
   }): Promise<AgentRun> {
+    const userId = await resolveOwnedTaskUserId({
+      novelId: input.novelId,
+      fallbackToAdmin: false,
+    });
     const row = await prisma.agentRun.create({
       data: {
+        userId,
         sessionId: input.sessionId,
         goal: input.goal,
         novelId: input.novelId ?? null,
@@ -152,8 +162,8 @@ export class AgentTraceStore {
   }
 
   async getRun(runId: string): Promise<AgentRun | null> {
-    const row = await prisma.agentRun.findUnique({
-      where: { id: runId },
+    const row = await prisma.agentRun.findFirst({
+      where: buildOwnedAgentRunWhere(runId),
     });
     return row ? toAgentRun(row) : null;
   }
@@ -166,12 +176,12 @@ export class AgentTraceStore {
     limit?: number;
   }): Promise<AgentRun[]> {
     const rows = await prisma.agentRun.findMany({
-      where: {
+      where: applyOwnedAgentRunWhere({
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.novelId ? { novelId: filters.novelId } : {}),
         ...(filters.chapterId != null ? { chapterId: filters.chapterId } : {}),
         ...(filters.sessionId ? { sessionId: filters.sessionId } : {}),
-      },
+      }),
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take: Math.max(1, Math.min(filters.limit ?? 50, 100)),
     });
@@ -179,8 +189,8 @@ export class AgentTraceStore {
   }
 
   async getRunDetail(runId: string): Promise<AgentRunDetail | null> {
-    const row = await prisma.agentRun.findUnique({
-      where: { id: runId },
+    const row = await prisma.agentRun.findFirst({
+      where: buildOwnedAgentRunWhere(runId),
       include: {
         steps: {
           orderBy: [{ seq: "asc" }, { createdAt: "asc" }],

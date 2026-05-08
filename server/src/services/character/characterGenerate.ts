@@ -6,6 +6,7 @@ import {
   baseCharacterFinalPrompt,
   baseCharacterSkeletonPrompt,
 } from "../../prompting/prompts/character/character.prompts";
+import { requireCurrentBaseCharacterUserId } from "./baseCharacterOwnership";
 import { characterLibrarySyncService } from "./CharacterLibrarySyncService";
 import { buildReferenceContext } from "./characterGenerateReference";
 
@@ -336,6 +337,7 @@ function mergeFinalPayload(
 }
 
 export async function generateBaseCharacterFromAI(input: CharacterGenerateInput): Promise<GenerateBaseCharacterResult> {
+  const userId = requireCurrentBaseCharacterUserId();
   const constraints = normalizeConstraints(input.constraints);
   assertConstraintConsistency(input.category, constraints);
 
@@ -398,7 +400,10 @@ export async function generateBaseCharacterFromAI(input: CharacterGenerateInput)
   }
 
   const data = await prisma.baseCharacter.create({
-    data: finalPayload,
+    data: {
+      ...finalPayload,
+      userId,
+    },
   });
   await characterLibrarySyncService.createBaseRevision(data.id, "AI 生成角色库角色。", "ai_base_character_generate");
 

@@ -1,5 +1,6 @@
 import type { KnowledgeBindingTargetType } from "@ai-novel/shared/types/knowledge";
 import { prisma } from "../../db/prisma";
+import { getRequestContext } from "../../runtime/requestContext";
 import { computeChunkHash, normalizeRagText } from "../rag/utils";
 
 export interface ActiveKnowledgeDocumentContent {
@@ -13,6 +14,17 @@ export interface ActiveKnowledgeDocumentContent {
 
 function uniqueIds(ids: string[]): string[] {
   return Array.from(new Set(ids.map((item) => item.trim()).filter(Boolean)));
+}
+
+function getOwnedKnowledgeScope():
+  | { enforce: true; userId: string }
+  | { enforce: false; userId: null } {
+  const context = getRequestContext();
+  const userId = context?.userId?.trim();
+  if (context?.authMode === "session" && userId) {
+    return { enforce: true, userId };
+  }
+  return { enforce: false, userId: null };
 }
 
 function stripFileExtension(fileName: string): string {
@@ -53,6 +65,7 @@ export async function resolveKnowledgeDocumentIds(input: {
   targetId?: string;
   knowledgeDocumentIds?: string[];
 }): Promise<string[]> {
+  const scope = getOwnedKnowledgeScope();
   const explicitIds = input.knowledgeDocumentIds;
   if (Array.isArray(explicitIds)) {
     if (explicitIds.length === 0) {
@@ -60,6 +73,7 @@ export async function resolveKnowledgeDocumentIds(input: {
     }
     const rows = await prisma.knowledgeDocument.findMany({
       where: {
+        ...(scope.enforce ? { userId: scope.userId } : {}),
         id: { in: uniqueIds(explicitIds) },
         status: { not: "archived" },
       },
@@ -74,6 +88,7 @@ export async function resolveKnowledgeDocumentIds(input: {
         targetType: input.targetType,
         targetId: input.targetId,
         document: {
+          ...(scope.enforce ? { userId: scope.userId } : {}),
           status: "enabled",
         },
       },
@@ -85,7 +100,7 @@ export async function resolveKnowledgeDocumentIds(input: {
   }
 
   const documents = await prisma.knowledgeDocument.findMany({
-    where: { status: "enabled" },
+    where: scope.enforce ? { status: "enabled", userId: scope.userId } : { status: "enabled" },
     select: { id: true },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
   });
@@ -98,12 +113,14 @@ export async function listActiveKnowledgeDocumentContents(
     allowDisabled?: boolean;
   },
 ): Promise<ActiveKnowledgeDocumentContent[]> {
+  const scope = getOwnedKnowledgeScope();
   const ids = uniqueIds(documentIds);
   if (ids.length === 0) {
     return [];
   }
   const rows = await prisma.knowledgeDocument.findMany({
     where: {
+      ...(scope.enforce ? { userId: scope.userId } : {}),
       id: { in: ids },
       ...(options?.allowDisabled ? { status: { not: "archived" } } : { status: "enabled" }),
       activeVersionId: { not: null },

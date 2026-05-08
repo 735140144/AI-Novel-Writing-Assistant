@@ -1,6 +1,7 @@
 import type { TitleLibraryEntry, TitleLibraryListResult } from "@ai-novel/shared/types/title";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 
 export interface ListTitleLibraryInput {
   search?: string;
@@ -44,6 +45,14 @@ function normalizeClickRate(value: number | null | undefined): number | null {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function requireCurrentUserId(): string {
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    throw new AppError("未登录，请先登录。", 401);
+  }
+  return userId;
+}
+
 function mapTitleEntry(
   row: {
     id: string;
@@ -74,12 +83,14 @@ function mapTitleEntry(
 
 export class TitleLibraryService {
   async list(input: ListTitleLibraryInput = {}): Promise<TitleLibraryListResult> {
+    const userId = requireCurrentUserId();
     const page = Math.max(1, Math.floor(input.page ?? 1));
     const pageSize = Math.min(100, Math.max(1, Math.floor(input.pageSize ?? 24)));
     const search = normalizeOptionalText(input.search);
     const genreId = normalizeOptionalText(input.genreId);
 
     const where = {
+      userId,
       ...(genreId ? { genreId } : {}),
       ...(search
         ? {
@@ -111,7 +122,7 @@ export class TitleLibraryService {
     const genreIds = Array.from(new Set(rows.map((row) => row.genreId).filter((value): value is string => Boolean(value))));
     const genres = genreIds.length > 0
       ? await prisma.novelGenre.findMany({
-        where: { id: { in: genreIds } },
+        where: { userId, id: { in: genreIds } },
         select: { id: true, name: true },
       })
       : [];
@@ -127,6 +138,7 @@ export class TitleLibraryService {
   }
 
   async create(input: CreateTitleLibraryInput): Promise<TitleLibraryEntry> {
+    const userId = requireCurrentUserId();
     const title = normalizeTitle(input.title);
     const description = normalizeOptionalText(input.description);
     const keywords = normalizeOptionalText(input.keywords);
@@ -134,8 +146,8 @@ export class TitleLibraryService {
     const clickRate = normalizeClickRate(input.clickRate);
 
     if (genreId) {
-      const genre = await prisma.novelGenre.findUnique({
-        where: { id: genreId },
+      const genre = await prisma.novelGenre.findFirst({
+        where: { id: genreId, userId },
         select: { id: true },
       });
       if (!genre) {
@@ -144,7 +156,7 @@ export class TitleLibraryService {
     }
 
     const existing = await prisma.titleLibrary.findFirst({
-      where: { title },
+      where: { userId, title },
       select: { id: true },
     });
     if (existing) {
@@ -153,6 +165,7 @@ export class TitleLibraryService {
 
     const created = await prisma.titleLibrary.create({
       data: {
+        userId,
         title,
         description,
         clickRate,
@@ -162,8 +175,8 @@ export class TitleLibraryService {
     });
 
     const genreMap = genreId
-      ? new Map([[genreId, (await prisma.novelGenre.findUnique({
-        where: { id: genreId },
+      ? new Map([[genreId, (await prisma.novelGenre.findFirst({
+        where: { id: genreId, userId },
         select: { id: true, name: true },
       })) ?? { id: genreId, name: "" }]])
       : new Map<string, { id: string; name: string }>();
@@ -171,6 +184,15 @@ export class TitleLibraryService {
   }
 
   async markUsed(id: string): Promise<TitleLibraryEntry> {
+    const userId = requireCurrentUserId();
+    const existing = await prisma.titleLibrary.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new AppError("标题不存在。", 404);
+    }
+
     const updated = await prisma.titleLibrary.update({
       where: { id },
       data: {
@@ -178,15 +200,11 @@ export class TitleLibraryService {
           increment: 1,
         },
       },
-    }).catch(() => null);
-
-    if (!updated) {
-      throw new AppError("标题不存在。", 404);
-    }
+    });
 
     const genreMap = updated.genreId
-      ? new Map([[updated.genreId, (await prisma.novelGenre.findUnique({
-        where: { id: updated.genreId },
+      ? new Map([[updated.genreId, (await prisma.novelGenre.findFirst({
+        where: { id: updated.genreId, userId },
         select: { id: true, name: true },
       })) ?? { id: updated.genreId, name: "" }]])
       : new Map<string, { id: string; name: string }>();
@@ -194,8 +212,9 @@ export class TitleLibraryService {
   }
 
   async delete(id: string): Promise<void> {
-    const existing = await prisma.titleLibrary.findUnique({
-      where: { id },
+    const userId = requireCurrentUserId();
+    const existing = await prisma.titleLibrary.findFirst({
+      where: { id, userId },
       select: { id: true },
     });
     if (!existing) {

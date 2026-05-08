@@ -127,7 +127,7 @@ export class AutoDirectorFollowUpNotificationService {
       after,
       occurredAt,
     });
-    const channelSettings = await getAutoDirectorChannelSettings();
+    const channelSettings = await getAutoDirectorChannelSettings({ userId: input.after.userId ?? undefined });
     await this.notifyDingTalk({
       event,
       after: input.after,
@@ -142,6 +142,7 @@ export class AutoDirectorFollowUpNotificationService {
 
   async notifyAutoApproved(input: {
     taskId: string;
+    userId?: string | null;
     novelId: string | null;
     novelTitle: string;
     checkpointType: NovelWorkflowCheckpoint;
@@ -172,9 +173,10 @@ export class AutoDirectorFollowUpNotificationService {
       after,
       occurredAt: input.occurredAt,
     });
-    const channelSettings = await getAutoDirectorChannelSettings();
+    const channelSettings = await getAutoDirectorChannelSettings({ userId: input.userId ?? undefined });
     const snapshot: AutoDirectorEventWorkflowSnapshot = {
       id: input.taskId,
+      userId: input.userId ?? null,
       novelId: input.novelId,
       status: "running",
       currentStage: input.stage ?? null,

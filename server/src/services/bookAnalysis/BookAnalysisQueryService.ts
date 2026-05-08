@@ -8,6 +8,7 @@ import { BOOK_ANALYSIS_SECTIONS } from "@ai-novel/shared/types/bookAnalysis";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { KnowledgeService } from "../knowledge/KnowledgeService";
+import { applyOwnedBookAnalysisWhere, buildOwnedBookAnalysisWhere } from "./bookAnalysisOwnership";
 import { buildAnalysisExportContent } from "./bookAnalysis.export";
 import { publishAnalysisToNovel } from "./bookAnalysis.publish";
 import { serializeAnalysisRow, serializeSectionRow } from "./bookAnalysis.serialization";
@@ -22,7 +23,7 @@ export class BookAnalysisQueryService {
   } = {}): Promise<BookAnalysis[]> {
     const keyword = filters.keyword?.trim();
     const rows = await prisma.bookAnalysis.findMany({
-      where: {
+      where: applyOwnedBookAnalysisWhere({
         ...(filters.status ? { status: filters.status } : { status: { not: "archived" } }),
         ...(filters.documentId ? { documentId: filters.documentId } : {}),
         ...(keyword
@@ -34,7 +35,7 @@ export class BookAnalysisQueryService {
               ],
             }
           : {}),
-      },
+      }),
       include: {
         document: {
           select: {
@@ -59,8 +60,8 @@ export class BookAnalysisQueryService {
 
   async getAnalysisById(analysisId: string): Promise<BookAnalysisDetail | null> {
     await this.ensureAnalysisSections(analysisId);
-    const row = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const row = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       include: {
         document: {
           select: {
@@ -116,8 +117,8 @@ export class BookAnalysisQueryService {
   }
 
   async ensureAnalysisSections(analysisId: string): Promise<void> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       select: {
         id: true,
         sections: {

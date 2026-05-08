@@ -1,10 +1,12 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import {
   storyModeChildPrompt,
   storyModeTreePrompt,
 } from "../../prompting/prompts/storyMode/storyMode.prompts";
+import { getRequestContext } from "../../runtime/requestContext";
 import {
   parseStoryModeProfileJson,
   sanitizeStoryModeProfile,
@@ -92,6 +94,14 @@ function sanitizeGeneratedChildNode(value: unknown): StoryModeTreeDraft {
   };
 }
 
+function requireCurrentUserId(): string {
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    throw new AppError("未登录，请先登录。", 401);
+  }
+  return userId;
+}
+
 export async function generateStoryModeTreeDraft(input: GenerateStoryModeTreeInput): Promise<StoryModeTreeDraft> {
   const result = await runStructuredPrompt({
     asset: storyModeTreePrompt,
@@ -111,8 +121,9 @@ export async function generateStoryModeTreeDraft(input: GenerateStoryModeTreeInp
 }
 
 export async function generateStoryModeChildDrafts(input: GenerateStoryModeChildInput): Promise<StoryModeTreeDraft[]> {
-  const parent = await prisma.novelStoryMode.findUnique({
-    where: { id: input.parentId },
+  const userId = requireCurrentUserId();
+  const parent = await prisma.novelStoryMode.findFirst({
+    where: { id: input.parentId, userId },
     select: {
       id: true,
       name: true,

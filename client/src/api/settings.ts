@@ -35,6 +35,14 @@ export interface APIKeyStatus {
   supportsImageGeneration: boolean;
 }
 
+export interface PublicProviderStatus {
+  provider: LLMProvider;
+  name: string;
+  displayName?: string;
+  currentModel: string;
+  models: string[];
+}
+
 export type ProviderBalanceStatusKind = "available" | "missing_api_key" | "unsupported" | "error";
 
 export interface ProviderBalanceStatus {
@@ -167,6 +175,16 @@ export interface StructuredFallbackSettings {
   maxTokens: number | null;
 }
 
+export interface SystemEmailSettings {
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  smtpPassword: string;
+  fromEmail: string;
+  fromName: string;
+}
+
 export interface AutoDirectorChannelConfig {
   webhookUrl: string;
   callbackToken: string;
@@ -197,6 +215,16 @@ export async function refreshProviderBalance(provider: LLMProvider) {
 
 export async function getRagSettings() {
   const { data } = await apiClient.get<ApiResponse<RagSettingsStatus>>("/settings/rag");
+  return data;
+}
+
+export async function getSystemEmailSettings() {
+  const { data } = await apiClient.get<ApiResponse<SystemEmailSettings>>("/settings/system-email");
+  return data;
+}
+
+export async function saveSystemEmailSettings(payload: Partial<SystemEmailSettings>) {
+  const { data } = await apiClient.put<ApiResponse<SystemEmailSettings>>("/settings/system-email", payload);
   return data;
 }
 
@@ -375,7 +403,11 @@ export async function refreshProviderModelList(provider: LLMProvider) {
 }
 
 export async function getLLMProviders() {
-  const { data } = await apiClient.get<ApiResponse<Record<string, unknown>>>("/llm/providers");
+  const { data } = await apiClient.get<ApiResponse<Record<string, {
+    name: string;
+    defaultModel: string;
+    models: string[];
+  }>>>("/llm/providers");
   return data;
 }
 

@@ -2,6 +2,11 @@ import type { ImageAsset, ImageGenerationTask } from "@ai-novel/shared/types/ima
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import {
+  buildOwnedBaseCharacterWhere,
+  getOwnedBaseCharacterScope,
+  requireCurrentBaseCharacterUserId,
+} from "../character/baseCharacterOwnership";
 import { generateImagesByProvider, isImageProviderSupported, resolveImageModel } from "./provider";
 import {
   persistGeneratedImageAsset,
@@ -22,6 +27,28 @@ export class ImageGenerationService {
   private readonly queueSet = new Set<string>();
   private processing = false;
 
+  private buildOwnedImageTaskWhere(taskId: string) {
+    const scope = getOwnedBaseCharacterScope();
+    if (scope.enforce) {
+      return {
+        id: taskId,
+        baseCharacter: { is: { userId: scope.userId } },
+      };
+    }
+    return { id: taskId };
+  }
+
+  private buildOwnedImageAssetWhere(assetId: string) {
+    const scope = getOwnedBaseCharacterScope();
+    if (scope.enforce) {
+      return {
+        id: assetId,
+        baseCharacter: { is: { userId: scope.userId } },
+      };
+    }
+    return { id: assetId };
+  }
+
   async createCharacterTask(input: ImageGenerationRequest): Promise<ImageGenerationTask> {
     if (input.sceneType !== "character") {
       throw new AppError("Only character image generation is supported in phase one.", 400);
@@ -32,8 +59,9 @@ export class ImageGenerationService {
       throw new AppError(`Provider ${provider} is not supported for image generation yet.`, 400);
     }
 
-    const character = await prisma.baseCharacter.findUnique({
-      where: { id: input.baseCharacterId },
+    const userId = requireCurrentBaseCharacterUserId();
+    const character = await prisma.baseCharacter.findFirst({
+      where: buildOwnedBaseCharacterWhere(input.baseCharacterId),
     });
     if (!character) {
       throw new AppError("Base character not found.", 404);
@@ -45,6 +73,7 @@ export class ImageGenerationService {
       : buildCharacterPrompt(input.prompt, input.stylePreset, character);
     const task = await prisma.imageGenerationTask.create({
       data: {
+        userId,
         sceneType: "character",
         baseCharacterId: character.id,
         provider,
@@ -68,15 +97,15 @@ export class ImageGenerationService {
   }
 
   async getTask(taskId: string): Promise<ImageGenerationTask> {
-    const task = await prisma.imageGenerationTask.findUnique({
-      where: { id: taskId },
+    const task = await prisma.imageGenerationTask.findFirst({
+      where: this.buildOwnedImageTaskWhere(taskId),
     });
     return toImageTask(task);
   }
 
   async retryTask(taskId: string): Promise<ImageGenerationTask> {
-    const task = await prisma.imageGenerationTask.findUnique({
-      where: { id: taskId },
+    const task = await prisma.imageGenerationTask.findFirst({
+      where: this.buildOwnedImageTaskWhere(taskId),
     });
     if (!task) {
       throw new AppError("Image task not found.", 404);
@@ -106,8 +135,8 @@ export class ImageGenerationService {
   }
 
   async cancelTask(taskId: string): Promise<ImageGenerationTask> {
-    const task = await prisma.imageGenerationTask.findUnique({
-      where: { id: taskId },
+    const task = await prisma.imageGenerationTask.findFirst({
+      where: this.buildOwnedImageTaskWhere(taskId),
     });
     if (!task) {
       throw new AppError("Image task not found.", 404);
@@ -143,6 +172,13 @@ export class ImageGenerationService {
   }
 
   async listCharacterAssets(baseCharacterId: string): Promise<ImageAsset[]> {
+    const baseCharacter = await prisma.baseCharacter.findFirst({
+      where: buildOwnedBaseCharacterWhere(baseCharacterId),
+      select: { id: true },
+    });
+    if (!baseCharacter) {
+      throw new AppError("Base character not found.", 404);
+    }
     const assets = await prisma.imageAsset.findMany({
       where: {
         sceneType: "character",
@@ -154,8 +190,8 @@ export class ImageGenerationService {
   }
 
   async setPrimaryAsset(assetId: string): Promise<ImageAsset> {
-    const asset = await prisma.imageAsset.findUnique({
-      where: { id: assetId },
+    const asset = await prisma.imageAsset.findFirst({
+      where: this.buildOwnedImageAssetWhere(assetId),
     });
     if (!asset) {
       throw new AppError("Image asset not found.", 404);
@@ -181,8 +217,8 @@ export class ImageGenerationService {
   }
 
   async deleteAsset(assetId: string): Promise<ImageAsset> {
-    const asset = await prisma.imageAsset.findUnique({
-      where: { id: assetId },
+    const asset = await prisma.imageAsset.findFirst({
+      where: this.buildOwnedImageAssetWhere(assetId),
     });
     if (!asset) {
       throw new AppError("Image asset not found.", 404);
@@ -229,8 +265,8 @@ export class ImageGenerationService {
   }
 
   async getAssetFile(assetId: string): Promise<{ localPath?: string; stream?: NodeJS.ReadableStream; mimeType: string | null }> {
-    const asset = await prisma.imageAsset.findUnique({
-      where: { id: assetId },
+    const asset = await prisma.imageAsset.findFirst({
+      where: this.buildOwnedImageAssetWhere(assetId),
       select: {
         id: true,
         url: true,
@@ -311,6 +347,9 @@ export class ImageGenerationService {
     }
     this.queue.push(taskId);
     this.queueSet.add(taskId);
+    if (process.env.AUTH_TEST_MODE === "strict") {
+      return;
+    }
     void this.processQueue();
   }
 

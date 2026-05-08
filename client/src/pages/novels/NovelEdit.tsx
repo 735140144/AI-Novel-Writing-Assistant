@@ -62,6 +62,7 @@ import { useNovelStoryMacro } from "./hooks/useNovelStoryMacro";
 import { useNovelVolumePlanning } from "./hooks/useNovelVolumePlanning";
 import { useVolumeVersionControl } from "./hooks/useVolumeVersionControl";
 import { useNovelEditWorkflow } from "./hooks/useNovelEditWorkflow";
+import { useNovelPublishingWorkspace } from "./hooks/useNovelPublishingWorkspace";
 import { buildNovelEditPlanningTabs } from "./novelEditPlanningTabs";
 import type { ChapterReviewResult } from "./chapterPlanning.shared";
 import type { NovelEditTakeoverState, NovelTaskDrawerState } from "./components/NovelEditView.types";
@@ -361,6 +362,11 @@ export default function NovelEdit() {
   const { tab: storyMacroTab } = useNovelStoryMacro({
     novelId: id,
     llm,
+  });
+  const { tab: publishingTab } = useNovelPublishingWorkspace({
+    novelId: id,
+    llm,
+    queryClient,
   });
   const {
     worldSliceMessage,
@@ -1310,6 +1316,7 @@ export default function NovelEdit() {
       structured: "节奏 / 拆章已打开",
       chapter: selectedChapter ? `正在查看第${selectedChapter.order}章执行面板` : "章节执行已打开",
       pipeline: "质量修复 / 流水线已打开",
+      publishing: "发布工作区可绑定账号和生成发布时间表",
     };
     void syncNovelWorkflowStageSilently({
       novelId: id,
@@ -1935,6 +1942,7 @@ export default function NovelEdit() {
       structuredTab={structuredTab}
       chapterTab={chapterTab}
       pipelineTab={pipelineTab}
+      publishingTab={publishingTab}
       characterTab={characterTab}
       takeover={isTakeoverDismissed ? null : takeover}
       activeStepTakeoverEntry={activeStepTakeoverEntry}

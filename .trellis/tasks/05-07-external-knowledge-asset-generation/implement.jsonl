@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/server/backend/index.md", "reason": "Backend conventions for any server-side implementation of external engine bindings, drafts, tasks, billing integration, and API contracts."}
+{"file": ".trellis/spec/server/frontend/index.md", "reason": "Frontend conventions if the implementation adds confirmation, binding, or draft review UI under the server package frontend layer."}
+{"file": ".trellis/spec/client/frontend/index.md", "reason": "Client frontend conventions for any user-facing binding, review, or billing display surfaces."}
+{"file": ".trellis/spec/shared/frontend/index.md", "reason": "Shared type conventions if the external engine contract or billing DTOs are added to shared package types."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Cross-layer and reuse thinking guides are relevant because this task spans contracts, billing, backend services, and frontend review flow."}
+{"file": ".trellis/tasks/05-07-external-knowledge-asset-generation/info.md", "reason": "Task-specific cross-system interaction design, including common/base sections, business fields, and token billing contract."}

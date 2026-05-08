@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { z } from "zod";
 import { authMiddleware } from "../middleware/auth";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { validate } from "../middleware/validate";
 import { novelDecisionService } from "../services/novel/NovelDecisionService";
 
@@ -33,6 +34,9 @@ const batchInvalidateSchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("id", (req, res, next, id) => {
+  void requireOwnedNovel(req, res, next, id);
+});
 
 router.get("/:id/creative-decisions", validate({ params: novelParamsSchema }), async (req, res, next) => {
   try {

@@ -17,13 +17,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
-import DesktopLegacyDataImportCard from "@/components/layout/DesktopLegacyDataImportCard";
-import DesktopUpdateCard from "@/components/layout/DesktopUpdateCard";
-import AutoDirectorSettingsSection from "./AutoDirectorSettingsSection";
 import { ProviderRequestLimitSummary } from "./components/ProviderRequestLimitFields";
 import SettingsNavigationCards from "./components/SettingsNavigationCards";
+import BillingNavigationCard from "./components/BillingNavigationCard";
 import ProviderConfigDialog, { type ProviderFormState } from "./components/ProviderConfigDialog";
 import StyleEngineRuntimeSettingsCard from "./components/StyleEngineRuntimeSettingsCard";
+import SystemEmailSettingsCard from "./components/SystemEmailSettingsCard";
 import SettingsActionResult from "./SettingsActionResult";
 import { formatBalanceAmount, formatBalanceTime } from "./settingsFormatters";
 import { AUTO_DIRECTOR_MOBILE_CLASSES } from "@/mobile/autoDirector";
@@ -377,13 +376,10 @@ export default function SettingsPage() {
 
   return (
     <div className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsPageRoot}>
-      <DesktopUpdateCard />
-      <DesktopLegacyDataImportCard forceVisible />
-
       <SettingsNavigationCards />
+      <BillingNavigationCard />
       <StyleEngineRuntimeSettingsCard />
-
-      <AutoDirectorSettingsSection onActionResult={setActionResult} />
+      <SystemEmailSettingsCard onActionResult={setActionResult} />
 
       <Card className="min-w-0 overflow-hidden">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

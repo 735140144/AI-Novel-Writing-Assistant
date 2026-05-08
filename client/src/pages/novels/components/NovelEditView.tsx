@@ -19,6 +19,7 @@ import NovelCharacterPanel from "./NovelCharacterPanel";
 import NovelTaskDrawer from "./NovelTaskDrawer";
 import OutlineTab from "./OutlineTab";
 import PipelineTab from "./PipelineTab";
+import PublishingWorkspaceTab from "./PublishingWorkspaceTab";
 import StoryMacroPlanTab from "./StoryMacroPlanTab";
 import StructuredOutlineTab from "./StructuredOutlineTab";
 import VersionHistoryTab from "./VersionHistoryTab";
@@ -54,6 +55,7 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
     structuredTab,
     chapterTab,
     pipelineTab,
+    publishingTab,
     characterTab,
     takeover,
     taskDrawer,
@@ -130,6 +132,8 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
         return <ChapterManagementTab {...chapterTab} />;
       case "pipeline":
         return <PipelineTab {...pipelineTab} />;
+      case "publishing":
+        return <PublishingWorkspaceTab {...publishingTab} />;
       case "character":
         return <NovelCharacterPanel {...characterTab} />;
       case "history":
@@ -178,7 +182,7 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
                 <DialogHeader>
                   <DialogTitle>导出项目内容</DialogTitle>
                   <DialogDescription>
-                    当前步骤会按你正在查看的工作台导出；整本书会把项目设定、故事规划、角色、卷规划、拆章、章节和质量修复资产一起导出。
+                    当前步骤会按你正在查看的工作台导出；整本书会把项目设定、故事规划、角色、卷规划、拆章、章节、质量修复和发布计划一起导出。
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 md:grid-cols-2">

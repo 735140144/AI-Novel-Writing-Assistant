@@ -6,10 +6,13 @@ import type {
   UnifiedTaskListResponse,
   UnifiedTaskSummary,
 } from "@ai-novel/shared/types/task";
+import type { Prisma } from "@prisma/client";
 import type { DirectorLLMOptions } from "@ai-novel/shared/types/novelDirector";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { applyOwnedBookAnalysisWhere } from "../bookAnalysis/bookAnalysisOwnership";
 import { NovelService } from "../novel/NovelService";
+import { getRequestContext } from "../../runtime/requestContext";
 import { AgentRunTaskAdapter } from "./adapters/AgentRunTaskAdapter";
 import { BookTaskAdapter } from "./adapters/BookTaskAdapter";
 import { KnowledgeTaskAdapter } from "./adapters/KnowledgeTaskAdapter";
@@ -28,6 +31,12 @@ import {
   type ListTasksFilters,
 } from "./taskCenter.shared";
 import { getArchivedTaskIdsByKind } from "./taskArchive";
+import {
+  applyOwnedAgentRunWhere,
+  applyOwnedGenerationJobWhere,
+  applyOwnedNovelWorkflowTaskWhere,
+  getCurrentTaskUserId,
+} from "./taskOwnership";
 
 const overviewTaskKinds: TaskKind[] = [
   "book_analysis",
@@ -38,6 +47,22 @@ const overviewTaskKinds: TaskKind[] = [
   "novel_workflow",
   "style_extraction",
 ];
+
+function mergeExcludedTaskIds(...collections: string[][]): string[] | undefined {
+  const merged = new Set<string>();
+  for (const items of collections) {
+    for (const item of items) {
+      if (typeof item === "string" && item.trim()) {
+        merged.add(item);
+      }
+    }
+  }
+  return merged.size ? [...merged] : undefined;
+}
+
+function getCurrentUserId(): string | null {
+  return getCurrentTaskUserId();
+}
 
 export class TaskCenterService {
   private readonly novelService = new NovelService();
@@ -65,6 +90,9 @@ export class TaskCenterService {
     const archivedAgentIds = archivedIdsByKind.get("agent_run") ?? [];
     const archivedWorkflowIds = archivedIdsByKind.get("novel_workflow") ?? [];
     const archivedStyleExtractionIds = archivedIdsByKind.get("style_extraction") ?? [];
+    const workflowTasks = await this.workflowAdapter.list({ take: 500 });
+    const workflowLinkedPipelineIds = [...collectWorkflowLinkedPipelineIds(workflowTasks)];
+    const hiddenPipelineIds = mergeExcludedTaskIds(archivedPipelineIds, workflowLinkedPipelineIds);
 
     const [
       bookRows,
@@ -82,17 +110,17 @@ export class TaskCenterService {
     ] = await Promise.all([
       prisma.bookAnalysis.groupBy({
         by: ["status"],
-        where: {
+        where: applyOwnedBookAnalysisWhere({
           status: { in: ["queued", "running", "succeeded", "failed", "cancelled"] },
           ...(archivedBookIds.length ? { id: { notIn: archivedBookIds } } : {}),
-        },
+        }),
         _count: { _all: true },
       }),
       prisma.generationJob.groupBy({
         by: ["status"],
-        where: {
-          ...(archivedPipelineIds.length ? { id: { notIn: archivedPipelineIds } } : {}),
-        },
+        where: applyOwnedGenerationJobWhere({
+          ...(hiddenPipelineIds ? { id: { notIn: hiddenPipelineIds } } : {}),
+        }),
         _count: { _all: true },
       }),
       prisma.ragIndexJob.groupBy({
@@ -107,65 +135,85 @@ export class TaskCenterService {
         by: ["status"],
         where: {
           ...(archivedImageIds.length ? { id: { notIn: archivedImageIds } } : {}),
+          ...(getCurrentUserId() ? { baseCharacter: { userId: getCurrentUserId() } } : {}),
         },
         _count: { _all: true },
       }),
       prisma.agentRun.groupBy({
         by: ["status"],
-        where: {
+        where: applyOwnedAgentRunWhere({
           ...(archivedAgentIds.length ? { id: { notIn: archivedAgentIds } } : {}),
-        },
+        }),
         _count: { _all: true },
       }),
       prisma.novelWorkflowTask.groupBy({
         by: ["status"],
-        where: {
+        where: applyOwnedNovelWorkflowTaskWhere({
           lane: "auto_director",
           ...(archivedWorkflowIds.length ? { id: { notIn: archivedWorkflowIds } } : {}),
-        },
+        }),
         _count: { _all: true },
       }),
       prisma.styleExtractionTask.groupBy({
         by: ["status"],
         where: {
           ...(archivedStyleExtractionIds.length ? { id: { notIn: archivedStyleExtractionIds } } : {}),
+          ...(getCurrentUserId()
+            ? {
+                OR: [
+                  { createdStyleProfile: { userId: getCurrentUserId() } },
+                  { sourceDocument: { userId: getCurrentUserId() } },
+                  { metadataJson: { contains: `\"userId\":\"${getCurrentUserId()}\"` } },
+                ],
+              }
+            : {}),
         },
         _count: { _all: true },
       }),
       prisma.bookAnalysis.count({
-        where: {
+        where: applyOwnedBookAnalysisWhere({
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
           ...(archivedBookIds.length ? { id: { notIn: archivedBookIds } } : {}),
-        },
+        }),
       }),
       prisma.generationJob.count({
-        where: {
+        where: applyOwnedGenerationJobWhere({
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
-          ...(archivedPipelineIds.length ? { id: { notIn: archivedPipelineIds } } : {}),
-        },
+          ...(hiddenPipelineIds ? { id: { notIn: hiddenPipelineIds } } : {}),
+        }),
       }),
       prisma.imageGenerationTask.count({
         where: {
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
           ...(archivedImageIds.length ? { id: { notIn: archivedImageIds } } : {}),
+          ...(getCurrentUserId() ? { baseCharacter: { userId: getCurrentUserId() } } : {}),
         },
       }),
       prisma.novelWorkflowTask.count({
-        where: {
+        where: applyOwnedNovelWorkflowTaskWhere({
           lane: "auto_director",
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
           ...(archivedWorkflowIds.length ? { id: { notIn: archivedWorkflowIds } } : {}),
-        },
+        }),
       }),
       prisma.styleExtractionTask.count({
         where: {
           status: { in: ["queued", "running"] },
           pendingManualRecovery: true,
           ...(archivedStyleExtractionIds.length ? { id: { notIn: archivedStyleExtractionIds } } : {}),
+          ...(getCurrentUserId()
+            ? {
+                OR: [
+                  { createdStyleProfile: { userId: getCurrentUserId() } },
+                  { sourceDocument: { userId: getCurrentUserId() } },
+                  { metadataJson: { contains: `\"userId\":\"${getCurrentUserId()}\"` } },
+                ],
+              }
+            : {}),
         },
       }),
     ]);
@@ -181,7 +229,9 @@ export class TaskCenterService {
 
     for (const rows of [bookRows, pipelineRows, knowledgeRows, imageRows, agentRows, workflowRows, styleExtractionRows]) {
       for (const row of rows) {
-        const count = row._count._all;
+        const count = typeof row._count === "object" && row._count && "_all" in row._count
+          ? row._count._all
+          : 0;
         if (row.status === "queued") {
           overview.queuedCount += count;
         } else if (row.status === "running") {

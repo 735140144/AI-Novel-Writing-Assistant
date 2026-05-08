@@ -90,6 +90,10 @@ const promptAssetLoaderEntries: PromptAssetLoaderEntry[] = [
     load: () => require("./prompts/planner/plannerPlan.prompts").plannerChapterPlanPrompt as UnknownPromptAsset,
   },
   {
+    key: "publishing.schedule.parse@v1",
+    load: () => require("./prompts/publishing/publishingSchedule.prompts").publishingSchedulePrompt as UnknownPromptAsset,
+  },
+  {
     key: "novel.director.candidates@v1",
     load: () => require("./prompts/novel/directorPlanning.prompts").directorCandidatePrompt as UnknownPromptAsset,
   },

@@ -1,5 +1,6 @@
 import type { AntiAiRule, ResolvedStyleContext, StyleBinding, StyleProfile, StyleRuleSet } from "@ai-novel/shared/types/styleEngine";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { StyleCompiler } from "./StyleCompiler";
 import { ensureStyleEngineSeedData } from "./StyleEngineSeedService";
 import {
@@ -9,6 +10,10 @@ import {
   mapStyleProfileRow,
   mergeRuleObjects,
 } from "./helpers";
+import {
+  applyOwnedStyleProfileWhere,
+  buildOwnedStyleProfileWhere,
+} from "./styleProfileOwnership";
 
 const TARGET_PRIORITY: Record<StyleBinding["targetType"], number> = {
   novel: 1,
@@ -75,6 +80,9 @@ export class StyleBindingService {
         targetType: filter?.targetType,
         targetId: filter?.targetId,
         styleProfileId: filter?.styleProfileId,
+        styleProfile: {
+          is: applyOwnedStyleProfileWhere(),
+        },
       },
       include: {
         styleProfile: {
@@ -103,6 +111,13 @@ export class StyleBindingService {
   }
 
   async createBinding(input: Pick<StyleBinding, "styleProfileId" | "targetType" | "targetId" | "priority" | "weight" | "enabled">): Promise<StyleBinding> {
+    const profile = await prisma.styleProfile.findFirst({
+      where: buildOwnedStyleProfileWhere(input.styleProfileId),
+      select: { id: true },
+    });
+    if (!profile) {
+      throw new AppError("写法资产不存在。", 404);
+    }
     const row = await prisma.styleBinding.create({
       data: input,
       include: {
@@ -131,6 +146,18 @@ export class StyleBindingService {
   }
 
   async deleteBinding(id: string): Promise<void> {
+    const binding = await prisma.styleBinding.findFirst({
+      where: {
+        id,
+        styleProfile: {
+          is: applyOwnedStyleProfileWhere(),
+        },
+      },
+      select: { id: true },
+    });
+    if (!binding) {
+      throw new AppError("写法绑定不存在。", 404);
+    }
     await prisma.styleBinding.delete({ where: { id } });
   }
 
@@ -185,8 +212,8 @@ export class StyleBindingService {
     }));
 
     if (input.taskStyleProfileId) {
-      const profileRow = await prisma.styleProfile.findUnique({
-        where: { id: input.taskStyleProfileId },
+      const profileRow = await prisma.styleProfile.findFirst({
+        where: buildOwnedStyleProfileWhere(input.taskStyleProfileId),
         include: {
           antiAiBindings: {
             where: { enabled: true },

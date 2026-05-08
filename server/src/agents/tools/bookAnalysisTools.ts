@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma";
+import { applyOwnedBookAnalysisWhere, buildOwnedBookAnalysisWhere } from "../../services/bookAnalysis/bookAnalysisOwnership";
 import { AgentToolError, type AgentToolName } from "../types";
 import type { AgentToolDefinition } from "./toolTypes";
 import {
@@ -25,10 +26,10 @@ export const bookAnalysisToolDefinitions: Partial<
     execute: async (_context, rawInput) => {
       const input = listBookAnalysesInputSchema.parse(rawInput);
       const rows = await prisma.bookAnalysis.findMany({
-        where: {
+        where: applyOwnedBookAnalysisWhere({
           ...(input.documentId ? { documentId: input.documentId } : {}),
           ...(input.status ? { status: input.status } : {}),
-        },
+        }),
         include: {
           document: {
             select: {
@@ -68,8 +69,8 @@ export const bookAnalysisToolDefinitions: Partial<
     outputSchema: getBookAnalysisDetailOutputSchema,
     execute: async (_context, rawInput) => {
       const input = bookAnalysisIdInputSchema.parse(rawInput);
-      const row = await prisma.bookAnalysis.findUnique({
-        where: { id: input.analysisId },
+      const row = await prisma.bookAnalysis.findFirst({
+        where: buildOwnedBookAnalysisWhere(input.analysisId),
         include: {
           document: {
             select: {
@@ -113,8 +114,8 @@ export const bookAnalysisToolDefinitions: Partial<
     outputSchema: getBookAnalysisFailureReasonOutputSchema,
     execute: async (_context, rawInput) => {
       const input = bookAnalysisIdInputSchema.parse(rawInput);
-      const row = await prisma.bookAnalysis.findUnique({
-        where: { id: input.analysisId },
+      const row = await prisma.bookAnalysis.findFirst({
+        where: buildOwnedBookAnalysisWhere(input.analysisId),
       });
       if (!row) {
         throw new AgentToolError("NOT_FOUND", "Book analysis not found.");

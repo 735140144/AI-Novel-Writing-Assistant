@@ -13,6 +13,7 @@ import { extractBlockedAutoDirectorValidationResult } from "./autoDirectorFollow
 
 export interface AutoDirectorEventWorkflowSnapshot {
   id: string;
+  userId?: string | null;
   novelId: string | null;
   status: TaskStatus;
   progress?: number | null;

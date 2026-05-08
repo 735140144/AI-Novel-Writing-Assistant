@@ -15,6 +15,10 @@ import {
   isTaskArchived,
 } from "../taskArchive";
 import { resolveTaskStatusesForList } from "../taskCenter.shared";
+import {
+  applyOwnedAgentRunWhere,
+  buildOwnedAgentRunWhere,
+} from "../taskOwnership";
 
 export class AgentRunTaskAdapter {
   toSummary(item: {
@@ -94,7 +98,7 @@ export class AgentRunTaskAdapter {
     const statuses = resolveTaskStatusesForList(input.status, input.includeFinished);
     const archivedIds = await getArchivedTaskIds("agent_run");
     const rows = await prisma.agentRun.findMany({
-      where: {
+      where: applyOwnedAgentRunWhere({
         ...(archivedIds.length
           ? {
             id: {
@@ -112,7 +116,7 @@ export class AgentRunTaskAdapter {
           }
           : {}),
         ...buildAgentRunTaskCenterVisibilityWhere(),
-      },
+      }),
       include: {
         steps: {
           select: { id: true },
@@ -214,8 +218,8 @@ export class AgentRunTaskAdapter {
       return null;
     }
 
-    const run = await prisma.agentRun.findUnique({
-      where: { id },
+    const run = await prisma.agentRun.findFirst({
+      where: buildOwnedAgentRunWhere(id),
       select: {
         id: true,
         status: true,

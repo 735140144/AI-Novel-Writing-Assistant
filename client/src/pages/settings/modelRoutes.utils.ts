@@ -2,6 +2,7 @@ import type {
   APIKeyStatus,
   ModelRouteConnectivityStatus,
   ModelRoutesResponse,
+  PublicProviderStatus,
 } from "@/api/settings";
 import type {
   ModelRouteRequestProtocol,
@@ -35,20 +36,30 @@ export interface RouteSavePayload {
   structuredResponseFormat: ModelRouteStructuredResponseFormat;
 }
 
-export function getProviderConfig(providerConfigs: APIKeyStatus[], provider: string) {
+export function getProviderConfig(
+  providerConfigs: Array<APIKeyStatus | PublicProviderStatus>,
+  provider: string,
+) {
   return providerConfigs.find((item) => item.provider === provider);
 }
 
-export function getProviderDisplayName(providerConfigs: APIKeyStatus[], provider: string): string {
+export function getProviderDisplayName(
+  providerConfigs: Array<APIKeyStatus | PublicProviderStatus>,
+  provider: string,
+): string {
   const config = getProviderConfig(providerConfigs, provider);
   return config?.displayName ?? config?.name ?? provider;
 }
 
-export function getPreferredModel(config: APIKeyStatus | undefined): string {
+export function getPreferredModel(config: APIKeyStatus | PublicProviderStatus | undefined): string {
   return config?.currentModel || config?.models?.[0] || "";
 }
 
-export function getModelOptions(providerConfigs: APIKeyStatus[], provider: string, currentModel: string): string[] {
+export function getModelOptions(
+  providerConfigs: Array<APIKeyStatus | PublicProviderStatus>,
+  provider: string,
+  currentModel: string,
+): string[] {
   const config = getProviderConfig(providerConfigs, provider);
   const models = config?.models ?? [];
   return [...new Set([currentModel, ...models].filter(Boolean))];

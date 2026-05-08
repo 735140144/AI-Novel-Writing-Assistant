@@ -49,6 +49,10 @@ import { buildNovelWorkflowDetailSteps } from "../novelWorkflowDetailSteps";
 import { buildWorkflowExplainability } from "../novelWorkflowExplainability";
 import { buildNovelWorkflowNextActionLabel } from "../novelWorkflowTaskSummary";
 import { resolveTaskStatusesForList } from "../taskCenter.shared";
+import {
+  applyOwnedNovelWorkflowTaskWhere,
+  buildOwnedNovelWorkflowTaskWhere,
+} from "../taskOwnership";
 
 function buildOwnerLabel(row: {
   novel?: { title: string } | null;
@@ -379,7 +383,7 @@ export class NovelWorkflowTaskAdapter {
     const statuses = resolveTaskStatusesForList(input.status, input.includeFinished);
     const archivedIds = await getArchivedTaskIds("novel_workflow");
     const rows = await prisma.novelWorkflowTask.findMany({
-      where: {
+      where: applyOwnedNovelWorkflowTaskWhere({
         ...(archivedIds.length
           ? {
             id: {
@@ -398,7 +402,7 @@ export class NovelWorkflowTaskAdapter {
             ],
           }
           : {}),
-      },
+      }),
       include: {
         novel: {
           select: {
@@ -433,8 +437,8 @@ export class NovelWorkflowTaskAdapter {
       await this.workflowService.healAutoDirectorTaskState(id);
     }
 
-    const row = await prisma.novelWorkflowTask.findUnique({
-      where: { id },
+    const row = await prisma.novelWorkflowTask.findFirst({
+      where: buildOwnedNovelWorkflowTaskWhere(id),
       include: {
         novel: {
           select: {
@@ -565,8 +569,8 @@ export class NovelWorkflowTaskAdapter {
       return null;
     }
 
-    const row = await prisma.novelWorkflowTask.findUnique({
-      where: { id },
+    const row = await prisma.novelWorkflowTask.findFirst({
+      where: buildOwnedNovelWorkflowTaskWhere(id),
       select: { status: true },
     });
     if (!row) {

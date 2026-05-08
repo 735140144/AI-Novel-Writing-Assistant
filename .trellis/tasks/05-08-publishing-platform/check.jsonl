@@ -1,0 +1,17 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Quality review should account for cross-layer and reuse risks."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review must verify schedule/status data is consistent from database through UI."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Review must catch duplicated helpers or missed existing patterns."}
+{"file": ".trellis/spec/server/backend/index.md", "reason": "Backend route, service, migration, ownership, and external API behavior need spec review."}
+{"file": ".trellis/spec/server/backend/database-guidelines.md", "reason": "Review must verify non-destructive migrations and data model consistency."}
+{"file": ".trellis/spec/server/backend/error-handling.md", "reason": "Review must verify dispatch failures and relogin flows surface correctly."}
+{"file": ".trellis/spec/server/backend/quality-guidelines.md", "reason": "Backend quality rules apply to publishing services and tests."}
+{"file": ".trellis/spec/server/backend/publishing-platform-integration.md", "reason": "Review must verify publishing platform contracts for server-owned dispatch, timer format, grouping, status mapping, QR sanitization, and ownership."}
+{"file": ".trellis/spec/client/frontend/index.md", "reason": "Publishing workspace UI needs frontend spec review."}
+{"file": ".trellis/spec/client/frontend/component-guidelines.md", "reason": "Review must verify new UI follows component conventions."}
+{"file": ".trellis/spec/client/frontend/hook-guidelines.md", "reason": "Review must verify query/mutation and server state patterns."}
+{"file": ".trellis/spec/client/frontend/state-management.md", "reason": "Review must verify plan editor state is not tangled with server status."}
+{"file": ".trellis/spec/client/frontend/type-safety.md", "reason": "Review must verify strong API and form typing."}
+{"file": ".trellis/spec/client/frontend/quality-guidelines.md", "reason": "Review must verify UI quality, responsive behavior, and user-facing copy rules."}
+{"file": ".trellis/spec/shared/frontend/index.md", "reason": "Shared publishing contracts should be checked for export consistency."}
+{"file": ".trellis/spec/shared/frontend/type-safety.md", "reason": "Review must verify shared publishing types stay type-safe."}
+{"file": ".trellis/tasks/05-08-publishing-platform/research/fanqie-dispatch-api.md", "reason": "Review must verify implementation matches dispatch API status, relogin, and timer format constraints."}

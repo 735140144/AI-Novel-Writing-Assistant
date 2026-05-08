@@ -17,6 +17,7 @@ declare module "axios" {
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT_MS,
+  withCredentials: true,
 });
 
 const AUTO_DISMISS_SERVER_ERROR_TOAST = {

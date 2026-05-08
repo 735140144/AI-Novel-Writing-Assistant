@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/server/backend/index.md", "reason": "Review backend changes against server package conventions and quality expectations."}
+{"file": ".trellis/spec/server/frontend/index.md", "reason": "Review any server frontend layer changes against UI and frontend conventions."}
+{"file": ".trellis/spec/client/frontend/index.md", "reason": "Review any client UI changes against frontend conventions and product copy requirements."}
+{"file": ".trellis/spec/shared/frontend/index.md", "reason": "Review shared contract/type changes for consistency across packages."}
+{"file": ".trellis/spec/guides/index.md", "reason": "Quality review should check cross-layer data flow and reuse risks for this integration."}
+{"file": ".trellis/tasks/05-07-external-knowledge-asset-generation/info.md", "reason": "Review implementation against the agreed external engine common/base sections and token billing contract."}

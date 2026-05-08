@@ -1,7 +1,6 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { matchPath, Outlet, useLocation } from "react-router-dom";
 import AppRouteFallback from "./AppRouteFallback";
-import DesktopModelSetupGate from "./DesktopModelSetupGate";
 import Navbar from "./Navbar";
 import NovelWorkspaceRail from "./NovelWorkspaceRail";
 import Sidebar from "./Sidebar";
@@ -72,7 +71,6 @@ export default function AppLayout() {
   if (useMobileNovelWorkspaceLayout) {
     return (
       <div className="min-h-screen bg-background">
-        <DesktopModelSetupGate />
         <Suspense fallback={<AppRouteFallback />}>
           <Outlet />
         </Suspense>
@@ -84,7 +82,6 @@ export default function AppLayout() {
   if (useMobileSiteLayout) {
     return (
       <MobileSiteShell>
-        <DesktopModelSetupGate />
         <Suspense fallback={<AppRouteFallback />}>
           <Outlet />
         </Suspense>
@@ -117,7 +114,6 @@ export default function AppLayout() {
           )}
         </div>
         <main className={useMobileFullWidthContent ? AUTO_DIRECTOR_MOBILE_CLASSES.appMain : DEFAULT_APP_MAIN_CLASS_NAME}>
-          <DesktopModelSetupGate />
           <Suspense fallback={<AppRouteFallback />}>
             <Outlet />
           </Suspense>

@@ -16,6 +16,7 @@ import NovelCharacterPanel from "../components/NovelCharacterPanel";
 import NovelTaskDrawer from "../components/NovelTaskDrawer";
 import OutlineTab from "../components/OutlineTab";
 import PipelineTab from "../components/PipelineTab";
+import PublishingWorkspaceTab from "../components/PublishingWorkspaceTab";
 import StoryMacroPlanTab from "../components/StoryMacroPlanTab";
 import StructuredOutlineTab from "../components/StructuredOutlineTab";
 import VersionHistoryTab from "../components/VersionHistoryTab";
@@ -45,6 +46,7 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
     structuredTab,
     chapterTab,
     pipelineTab,
+    publishingTab,
     characterTab,
     takeover,
     taskDrawer,
@@ -106,6 +108,8 @@ export default function MobileNovelEditView(props: NovelEditViewProps) {
         return <ChapterManagementTab {...chapterTab} />;
       case "pipeline":
         return <PipelineTab {...pipelineTab} />;
+      case "publishing":
+        return <PublishingWorkspaceTab {...publishingTab} />;
       case "history":
         return <VersionHistoryTab novelId={id} />;
       default:

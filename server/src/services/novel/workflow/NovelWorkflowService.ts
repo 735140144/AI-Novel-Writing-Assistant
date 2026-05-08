@@ -59,6 +59,12 @@ import {
 import type {
   AutoDirectorEventWorkflowSnapshot,
 } from "../../task/autoDirectorFollowUps/autoDirectorFollowUpEventBuilder";
+import {
+  applyOwnedNovelWorkflowTaskWhere,
+  buildOwnedGenerationJobWhere,
+  buildOwnedNovelWorkflowTaskWhere,
+  resolveOwnedTaskUserId,
+} from "../../task/taskOwnership";
 
 type WorkflowRow = Awaited<ReturnType<typeof prisma.novelWorkflowTask.findUnique>>;
 type NovelWorkflowTaskUpdateArgs = Parameters<typeof prisma.novelWorkflowTask.update>[0];
@@ -317,6 +323,7 @@ export class NovelWorkflowService {
 
   private toAutoDirectorEventSnapshot(row: {
     id: string;
+    userId?: string | null;
     novelId: string | null;
     lane: string;
     status: string;
@@ -337,6 +344,7 @@ export class NovelWorkflowService {
     }
     return {
       id: row.id,
+      userId: row.userId ?? null,
       novelId: row.novelId,
       status: row.status as TaskStatus,
       progress: row.progress ?? null,
@@ -354,6 +362,7 @@ export class NovelWorkflowService {
   private async notifyAutoDirectorTaskTransition(input: {
     before: {
       id: string;
+      userId?: string | null;
       novelId: string | null;
       lane: string;
       status: string;
@@ -371,6 +380,7 @@ export class NovelWorkflowService {
     } | null;
     after: {
       id: string;
+      userId?: string | null;
       novelId: string | null;
       lane: string;
       status: string;
@@ -433,10 +443,10 @@ export class NovelWorkflowService {
 
   private async getVisibleRowsByNovelIdRaw(novelId: string, lane?: NovelWorkflowLane) {
     const rows = await prisma.novelWorkflowTask.findMany({
-      where: {
+      where: applyOwnedNovelWorkflowTaskWhere({
         novelId,
         ...(lane ? { lane } : {}),
-      },
+      }),
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       take: 10,
     });
@@ -459,8 +469,8 @@ export class NovelWorkflowService {
     if (await isTaskArchived("novel_workflow", taskId)) {
       return null;
     }
-    return prisma.novelWorkflowTask.findUnique({
-      where: { id: taskId },
+    return prisma.novelWorkflowTask.findFirst({
+      where: buildOwnedNovelWorkflowTaskWhere(taskId),
     });
   }
 
@@ -495,13 +505,13 @@ export class NovelWorkflowService {
     includeStaleRunningFlag?: boolean;
   } = {}) {
     const rows = await prisma.novelWorkflowTask.findMany({
-      where: {
+      where: applyOwnedNovelWorkflowTaskWhere({
         lane: "auto_director",
         status: {
           in: ["queued", "running"],
         },
         pendingManualRecovery: false,
-      },
+      }),
       orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       select: {
         id: true,
@@ -754,8 +764,8 @@ export class NovelWorkflowService {
       return false;
     }
 
-    const pipelineJob = await prisma.generationJob.findUnique({
-      where: { id: pipelineJobId },
+    const pipelineJob = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(pipelineJobId),
       select: {
         id: true,
         status: true,
@@ -906,8 +916,8 @@ export class NovelWorkflowService {
       return false;
     }
 
-    const job = await prisma.generationJob.findUnique({
-      where: { id: pipelineJobId },
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(pipelineJobId),
       select: {
         id: true,
         status: true,
@@ -1160,8 +1170,13 @@ export class NovelWorkflowService {
 
   private async createWorkflow(input: BootstrapWorkflowInput) {
     const novelTitle = input.novelId ? await this.getNovelTitle(input.novelId) : null;
+    const userId = await resolveOwnedTaskUserId({
+      novelId: input.novelId,
+      fallbackToAdmin: false,
+    });
     const created = await prisma.novelWorkflowTask.create({
       data: {
+        userId,
         novelId: input.novelId ?? null,
         lane: input.lane,
         title: defaultWorkflowTitle({

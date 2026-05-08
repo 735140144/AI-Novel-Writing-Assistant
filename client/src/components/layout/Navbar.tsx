@@ -1,7 +1,9 @@
 import { useLocation } from "react-router-dom";
 import LLMSelector from "@/components/common/LLMSelector";
-import DesktopBrandMark from "@/components/layout/DesktopBrandMark";
+import BrandMark from "@/components/layout/BrandMark";
 import { Button } from "@/components/ui/button";
+import { logoutCurrentAuthUser } from "@/api/auth";
+import { useAuthStore } from "@/store/authStore";
 import {
   AUTO_DIRECTOR_MOBILE_CLASSES,
   shouldUseAutoDirectorMobileFullWidthContent,
@@ -15,6 +17,7 @@ interface NavbarProps {
 export default function Navbar(props: NavbarProps) {
   const { workspaceNavMode, onWorkspaceNavModeChange } = props;
   const location = useLocation();
+  const clearUser = useAuthStore((state) => state.clearUser);
   const isHome = location.pathname === "/";
   const showWorkspaceToggle = Boolean(workspaceNavMode && onWorkspaceNavModeChange);
   const useMobileAutoDirectorShell = shouldUseAutoDirectorMobileFullWidthContent(location.pathname);
@@ -22,7 +25,7 @@ export default function Navbar(props: NavbarProps) {
   return (
     <header className="flex h-16 min-w-0 items-center justify-between gap-3 border-b bg-background px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        <DesktopBrandMark className="h-8 w-8 shrink-0 drop-shadow-none" />
+        <BrandMark className="h-8 w-8 shrink-0 drop-shadow-none" />
         <div className="flex min-w-0 flex-col leading-tight">
           <span className="truncate text-sm font-semibold">AI 小说创作工作台</span>
           <span className="hidden truncate text-[11px] text-muted-foreground sm:block">AI Novel Production Engine</span>
@@ -43,6 +46,18 @@ export default function Navbar(props: NavbarProps) {
         <div className={useMobileAutoDirectorShell ? AUTO_DIRECTOR_MOBILE_CLASSES.navbarModelSelector : undefined}>
           <LLMSelector compact showBadge={false} showHelperText={false} />
         </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={async () => {
+            await logoutCurrentAuthUser().catch(() => undefined);
+            clearUser();
+            window.location.assign("/login");
+          }}
+        >
+          退出
+        </Button>
       </div>
     </header>
   );

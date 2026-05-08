@@ -11,6 +11,12 @@ import type {
 import type { FailureDiagnostic } from "@ai-novel/shared/types/agent";
 import { prisma } from "../db/prisma";
 import { novelSetupStatusService } from "../services/novel/NovelSetupStatusService";
+import {
+  applyOwnedAgentRunWhere,
+  applyOwnedCreativeHubThreadWhere,
+  buildOwnedCreativeHubThreadWhere,
+  resolveOwnedTaskUserId,
+} from "../services/task/taskOwnership";
 
 interface CreateThreadInput {
   title?: string;
@@ -127,8 +133,8 @@ function mapCheckpoint(record: {
 
 async function loadFailureDiagnostic(runId: string | null | undefined): Promise<FailureDiagnostic | undefined> {
   if (!runId) return undefined;
-  const run = await prisma.agentRun.findUnique({
-    where: { id: runId },
+  const run = await prisma.agentRun.findFirst({
+    where: applyOwnedAgentRunWhere({ id: runId }),
     include: {
       steps: {
         orderBy: { seq: "desc" },
@@ -151,15 +157,19 @@ async function loadFailureDiagnostic(runId: string | null | undefined): Promise<
 export class CreativeHubService {
   async listThreads(options?: { includeArchived?: boolean }): Promise<CreativeHubThread[]> {
     const records = await prisma.creativeHubThread.findMany({
-      where: options?.includeArchived ? undefined : { archived: false },
+      where: applyOwnedCreativeHubThreadWhere(
+        options?.includeArchived ? {} : { archived: false },
+      ),
       orderBy: { updatedAt: "desc" },
     });
     return records.map(mapThread);
   }
 
   async createThread(input?: CreateThreadInput): Promise<CreativeHubThread> {
+    const userId = await resolveOwnedTaskUserId({ fallbackToAdmin: false });
     const record = await prisma.creativeHubThread.create({
       data: {
+        userId,
         title: input?.title?.trim() || "新对话",
         resourceBindingsJson: JSON.stringify(normalizeBindings(input?.resourceBindings)),
       },
@@ -168,7 +178,9 @@ export class CreativeHubService {
   }
 
   async updateThread(threadId: string, input: UpdateThreadInput): Promise<CreativeHubThread> {
-    const existing = await prisma.creativeHubThread.findUnique({ where: { id: threadId } });
+    const existing = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
+    });
     if (!existing) {
       throw new Error("线程不存在。");
     }
@@ -190,14 +202,21 @@ export class CreativeHubService {
   }
 
   async deleteThread(threadId: string): Promise<void> {
+    const existing = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new Error("线程不存在。");
+    }
     await prisma.creativeHubThread.delete({
-      where: { id: threadId },
+      where: { id: existing.id },
     });
   }
 
   async getThreadState(threadId: string): Promise<CreativeHubThreadState> {
-    const record = await prisma.creativeHubThread.findUnique({
-      where: { id: threadId },
+    const record = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
       include: {
         checkpoints: {
           orderBy: { createdAt: "desc" },
@@ -229,17 +248,31 @@ export class CreativeHubService {
   }
 
   async getThreadHistory(threadId: string): Promise<CreativeHubThreadHistoryItem[]> {
+    const existing = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
+      select: { id: true },
+    });
+    if (!existing) {
+      return [];
+    }
     const records = await prisma.creativeHubCheckpoint.findMany({
-      where: { threadId },
+      where: { threadId: existing.id },
       orderBy: { createdAt: "desc" },
     });
     return records.map(mapCheckpoint);
   }
 
   async getCheckpointHistoryItem(threadId: string, checkpointId: string): Promise<CreativeHubThreadHistoryItem | null> {
+    const existing = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
+      select: { id: true },
+    });
+    if (!existing) {
+      return null;
+    }
     const record = await prisma.creativeHubCheckpoint.findFirst({
       where: {
-        threadId,
+        threadId: existing.id,
         checkpointId,
       },
     });
@@ -261,7 +294,9 @@ export class CreativeHubService {
   }
 
   async saveCheckpoint(threadId: string, input: SaveCheckpointInput): Promise<CreativeHubCheckpointRef> {
-    const existing = await prisma.creativeHubThread.findUnique({ where: { id: threadId } });
+    const existing = await prisma.creativeHubThread.findFirst({
+      where: buildOwnedCreativeHubThreadWhere(threadId),
+    });
     if (!existing) {
       throw new Error("线程不存在。");
     }

@@ -4,6 +4,7 @@ import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { NovelService } from "./NovelService";
 import { StoryMacroPlanService } from "./storyMacro/StoryMacroPlanService";
+import { publishingService } from "../publishing/PublishingService";
 import { buildMarkdownExportContent, buildScopedNovelExportPayload } from "./export/novelExportFormatting";
 import type {
   ExportBible,
@@ -607,6 +608,7 @@ export class NovelExportService {
       chapterPlanRows,
       auditReportRows,
       characterTimelineRows,
+      publishingWorkspace,
     ] = await Promise.all([
       this.storyMacroPlanService.getPlan(novelId),
       this.novelService.getWorldSlice(novelId),
@@ -645,6 +647,7 @@ export class NovelExportService {
         where: { novelId },
         orderBy: [{ chapterOrder: "asc" }, { createdAt: "asc" }],
       }),
+      publishingService.getWorkspace(novelId).catch(() => null),
     ]);
 
     const chapterPlans = chapterPlanRows
@@ -730,6 +733,9 @@ export class NovelExportService {
           payoffLedger,
           latestStateSnapshot,
           chapterAuditReports,
+        },
+        publishing: {
+          workspace: publishingWorkspace,
         },
       },
     };

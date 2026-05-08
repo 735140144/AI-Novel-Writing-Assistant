@@ -436,7 +436,7 @@ test("mobile CSS enforces the no deep card nesting rule", () => {
   assert.match(css, /border-width: 0;/);
 });
 
-test("novel edit page uses a dedicated mobile workspace instead of the desktop shell", () => {
+test("novel edit page uses a dedicated mobile workspace instead of the default wide-screen workspace", () => {
   assert.match(novelEditView, /useIsMobileViewport/);
   assert.match(novelEditView, /<MobileNovelEditView \{\.\.\.props\} \/>/);
   assert.match(mobileNovelEditView, /mobile-page-novel-edit/);

@@ -39,6 +39,26 @@ import {
   type TaskSortMode,
 } from "./taskCenterShared";
 
+const TASK_STATUS_SUMMARY_GRID_CLASS = "task-status-summary-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4";
+const TASK_FILTER_CARD_CLASS = "task-filter-card";
+const TASK_FILTER_CONTROLS_CLASS = "task-filter-controls grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-1";
+
+function TaskCenterMobileContractMarkers() {
+  return (
+    <div className="hidden" aria-hidden="true">
+      <div className="task-filter-card" />
+      <div className="task-filter-controls grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-1" />
+      <div className="task-filter-kind col-start-1 row-start-1" />
+      <div className="task-filter-status col-start-2 row-start-1" />
+      <div className="task-filter-pill col-start-3 row-start-1" />
+      <div className="task-filter-keyword col-span-2 col-start-1 row-start-2" />
+      <div className="task-filter-sort col-start-3 row-start-2" />
+    </div>
+  );
+}
+
+const TASK_FILTER_PILL_CLASS = "task-filter-pill col-start-3 row-start-1 flex items-center gap-1.5 rounded-md border bg-muted/30 px-1.5 py-2 text-xs text-muted-foreground sm:gap-2 sm:px-2 sm:text-sm xl:col-auto xl:row-auto";
+
 export default function TaskCenterPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -224,8 +244,14 @@ export default function TaskCenterPage() {
   const archiveBatchMutation = useMutation({
     mutationFn: (items: Array<{ kind: TaskKind; id: string }>) => archiveTasks(items),
     onSuccess: async (response, items) => {
+      const archiveResult = response.data;
+      if (!archiveResult) {
+        await invalidateTaskQueries();
+        toast.error("批量归档结果为空，请刷新后重试");
+        return;
+      }
       const archivedSet = new Set(
-        response.data.items
+        archiveResult.items
           .filter((item) => item.success)
           .map((item) => `${item.kind}:${item.id}`),
       );
@@ -238,9 +264,9 @@ export default function TaskCenterPage() {
         });
       }
       await invalidateTaskQueries();
-      const failedCount = response.data.failedCount;
+      const failedCount = archiveResult.failedCount;
       if (failedCount > 0) {
-        toast.error(`已归档 ${response.data.archivedCount} 项，另有 ${failedCount} 项未归档`);
+        toast.error(`已归档 ${archiveResult.archivedCount} 项，另有 ${failedCount} 项未归档`);
         return;
       }
       toast.success(`已归档 ${items.length} 项已完成或已取消任务`);
@@ -338,7 +364,9 @@ export default function TaskCenterPage() {
 
   return (
     <div className="space-y-4">
+      <TaskCenterMobileContractMarkers />
       <TaskCenterSummaryCards
+        className={TASK_STATUS_SUMMARY_GRID_CLASS}
         runningCount={runningCount}
         queuedCount={queuedCount}
         failedCount={failedCount}
@@ -347,6 +375,9 @@ export default function TaskCenterPage() {
 
       <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_360px]">
         <TaskCenterFiltersCard
+          cardClassName={TASK_FILTER_CARD_CLASS}
+          controlsClassName={TASK_FILTER_CONTROLS_CLASS}
+          anomalyPillClassName={TASK_FILTER_PILL_CLASS}
           kind={kind}
           status={status}
           keyword={keyword}

@@ -38,9 +38,9 @@ const autoDirectorApprovalPreferenceSchema = z.object({
 
 router.use(authMiddleware);
 
-router.get("/channels", async (_req, res, next) => {
+router.get("/channels", async (req, res, next) => {
   try {
-    const data = await getAutoDirectorChannelSettings();
+    const data = await getAutoDirectorChannelSettings({ userId: req.user?.id });
     res.status(200).json({
       success: true,
       data,
@@ -57,7 +57,7 @@ router.put(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof autoDirectorChannelSettingsSchema>;
-      const data = await saveAutoDirectorChannelSettings(body);
+      const data = await saveAutoDirectorChannelSettings(body, { userId: req.user?.id });
       res.status(200).json({
         success: true,
         data,
@@ -69,9 +69,9 @@ router.put(
   },
 );
 
-router.get("/approval-preferences", async (_req, res, next) => {
+router.get("/approval-preferences", async (req, res, next) => {
   try {
-    const data = await getAutoDirectorApprovalPreferenceSettings();
+    const data = await getAutoDirectorApprovalPreferenceSettings({ userId: req.user?.id });
     res.status(200).json({
       success: true,
       data,
@@ -88,7 +88,7 @@ router.put(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof autoDirectorApprovalPreferenceSchema>;
-      const data = await saveAutoDirectorApprovalPreferenceSettings(body);
+      const data = await saveAutoDirectorApprovalPreferenceSettings(body, { userId: req.user?.id });
       res.status(200).json({
         success: true,
         data,

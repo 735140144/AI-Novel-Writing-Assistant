@@ -6,6 +6,7 @@ import type {
   NovelExportChapterSection,
   NovelExportOutlineSection,
   NovelExportPipelineSection,
+  NovelExportPublishingSection,
   NovelExportSectionMap,
   NovelExportSectionScope,
   NovelExportStoryMacroSection,
@@ -20,6 +21,7 @@ const FULL_SECTION_ORDER: NovelExportSectionScope[] = [
   "structured",
   "chapter",
   "pipeline",
+  "publishing",
 ];
 
 function normalizeText(input: string | null | undefined): string {
@@ -176,6 +178,15 @@ function buildPipelineSummary(section: NovelExportPipelineSection): string[] {
   return lines;
 }
 
+function buildPublishingSummary(section: NovelExportPublishingSection): string[] {
+  const lines: string[] = [];
+  addBullet(lines, "平台账号数", section.workspace?.credentials.length ?? 0);
+  addBullet(lines, "绑定书籍", section.workspace?.binding?.bookTitle ?? null);
+  addBullet(lines, "计划章节数", section.workspace?.activePlan?.items.length ?? 0);
+  addBullet(lines, "最近发布任务数", section.workspace?.recentJobs.length ?? 0);
+  return lines;
+}
+
 function buildSectionSummary(scope: NovelExportSectionScope, section: NovelExportSectionMap[NovelExportSectionScope]): string[] {
   switch (scope) {
     case "basic":
@@ -192,6 +203,8 @@ function buildSectionSummary(scope: NovelExportSectionScope, section: NovelExpor
       return buildChapterSummary(section as NovelExportChapterSection);
     case "pipeline":
       return buildPipelineSummary(section as NovelExportPipelineSection);
+    case "publishing":
+      return buildPublishingSummary(section as NovelExportPublishingSection);
     default:
       return [];
   }

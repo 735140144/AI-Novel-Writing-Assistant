@@ -7,6 +7,12 @@ import { BOOK_ANALYSIS_SECTIONS } from "@ai-novel/shared/types/bookAnalysis";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import {
+  buildOwnedBookAnalysisSectionWhere,
+  buildOwnedBookAnalysisWhere,
+  getOwnedBookAnalysisScope,
+  requireCurrentBookAnalysisUserId,
+} from "./bookAnalysisOwnership";
 import { getBookAnalysisMaxConcurrentTasks } from "./bookAnalysis.config";
 import { BookAnalysisGenerationService } from "./bookAnalysis.generation";
 import { BookAnalysisTaskQueue } from "./bookAnalysis.queue";
@@ -46,8 +52,8 @@ export class BookAnalysisCommandService {
   }
 
   async resumePendingAnalysis(analysisId: string): Promise<BookAnalysisDetail> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       select: {
         status: true,
       },
@@ -86,11 +92,13 @@ export class BookAnalysisCommandService {
     maxTokens?: number;
     includeTimeline?: boolean;
   }): Promise<BookAnalysisDetail> {
+    const userId = requireCurrentBookAnalysisUserId();
+    const scope = getOwnedBookAnalysisScope();
     const temperature = normalizeTemperature(input.temperature);
     const maxTokens = normalizeMaxTokens(input.maxTokens);
     const analysisId = await prisma.$transaction(async (tx) => {
-      const document = await tx.knowledgeDocument.findUnique({
-        where: { id: input.documentId },
+      const document = await tx.knowledgeDocument.findFirst({
+        where: scope.enforce ? { id: input.documentId, userId: scope.userId } : { id: input.documentId },
         include: {
           versions: {
             select: {
@@ -115,6 +123,7 @@ export class BookAnalysisCommandService {
       }
       const analysis = await tx.bookAnalysis.create({
         data: {
+          userId: scope.enforce ? userId : null,
           documentId: document.id,
           documentVersionId: version.id,
           title: `${document.title} v${version.versionNumber}`,
@@ -150,8 +159,10 @@ export class BookAnalysisCommandService {
   }
 
   async copyAnalysis(analysisId: string): Promise<BookAnalysisDetail> {
-    const source = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const userId = requireCurrentBookAnalysisUserId();
+    const scope = getOwnedBookAnalysisScope();
+    const source = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       include: {
         sections: {
           orderBy: [{ sortOrder: "asc" }],
@@ -167,6 +178,7 @@ export class BookAnalysisCommandService {
     const newAnalysisId = await prisma.$transaction(async (tx) => {
       const copied = await tx.bookAnalysis.create({
         data: {
+          userId: scope.enforce ? userId : null,
           documentId: source.documentId,
           documentVersionId: source.documentVersionId,
           title: `${source.title} - copy`,
@@ -213,8 +225,8 @@ export class BookAnalysisCommandService {
   }
 
   async rebuildAnalysis(analysisId: string): Promise<BookAnalysisDetail> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       include: {
         sections: true,
       },
@@ -260,8 +272,8 @@ export class BookAnalysisCommandService {
   }
 
   async retryAnalysis(analysisId: string): Promise<BookAnalysisDetail> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       select: { status: true },
     });
     if (!analysis) {
@@ -274,8 +286,8 @@ export class BookAnalysisCommandService {
   }
 
   async cancelAnalysis(analysisId: string): Promise<BookAnalysisDetail> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
       select: {
         id: true,
         status: true,
@@ -324,10 +336,7 @@ export class BookAnalysisCommandService {
 
   async regenerateSection(analysisId: string, sectionKey: BookAnalysisSectionKey): Promise<BookAnalysisDetail> {
     const section = await prisma.bookAnalysisSection.findFirst({
-      where: {
-        analysisId,
-        sectionKey,
-      },
+      where: buildOwnedBookAnalysisSectionWhere({ analysisId, sectionKey }),
       include: {
         analysis: true,
       },
@@ -380,6 +389,13 @@ export class BookAnalysisCommandService {
     sectionKey: BookAnalysisSectionKey,
     input: { currentDraft: string; instruction: string },
   ): Promise<{ optimizedDraft: string }> {
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
+      select: { id: true },
+    });
+    if (!analysis) {
+      throw new AppError("Book analysis not found.", 404);
+    }
     const optimizedDraft = await this.generationService.optimizeSectionPreview({
       analysisId,
       sectionKey,
@@ -399,10 +415,7 @@ export class BookAnalysisCommandService {
     },
   ): Promise<BookAnalysisDetail> {
     const section = await prisma.bookAnalysisSection.findFirst({
-      where: {
-        analysisId,
-        sectionKey,
-      },
+      where: buildOwnedBookAnalysisSectionWhere({ analysisId, sectionKey }),
     });
     if (!section) {
       throw new AppError("Book analysis section not found.", 404);
@@ -444,8 +457,8 @@ export class BookAnalysisCommandService {
     analysisId: string,
     status: Extract<BookAnalysisStatus, "archived">,
   ): Promise<BookAnalysisDetail> {
-    const analysis = await prisma.bookAnalysis.findUnique({
-      where: { id: analysisId },
+    const analysis = await prisma.bookAnalysis.findFirst({
+      where: buildOwnedBookAnalysisWhere(analysisId),
     });
     if (!analysis) {
       throw new AppError("Book analysis not found.", 404);

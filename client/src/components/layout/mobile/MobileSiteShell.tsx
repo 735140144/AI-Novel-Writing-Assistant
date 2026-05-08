@@ -12,9 +12,11 @@ import {
   X,
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import DesktopBrandMark from "../DesktopBrandMark";
+import BrandMark from "../BrandMark";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { logoutCurrentAuthUser } from "@/api/auth";
+import { useAuthStore } from "@/store/authStore";
 import {
   getMobileMoreNavGroups,
   getMobileNavGroupForPath,
@@ -39,11 +41,18 @@ interface MobileSiteShellProps {
 export default function MobileSiteShell({ children }: MobileSiteShellProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const isAdmin = useAuthStore((state) => state.user?.role === "admin");
+  const clearUser = useAuthStore((state) => state.clearUser);
   const [moreOpen, setMoreOpen] = useState(false);
   const activeGroup = getMobileNavGroupForPath(location.pathname);
   const pageTitle = getMobilePageTitle(location.pathname);
   const primaryNavItems = getMobilePrimaryNavItems();
-  const moreNavGroups = getMobileMoreNavGroups();
+  const moreNavGroups = getMobileMoreNavGroups()
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !(item.adminOnly && !isAdmin)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const openPrimaryItem = (key: MobilePrimaryNavKey, to: string) => {
     if (key === "more") {
@@ -59,7 +68,7 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
       <header className="sticky top-0 z-40 border-b bg-background/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/82">
         <div className="flex items-center justify-between gap-3">
           <Link to="/" className="flex min-w-0 items-center gap-2" onClick={() => setMoreOpen(false)}>
-            <DesktopBrandMark className="h-8 w-8 shrink-0 drop-shadow-none" />
+            <BrandMark className="h-8 w-8 shrink-0 drop-shadow-none" />
             <div className="min-w-0 leading-tight">
               <div className="truncate text-sm font-semibold">AI 小说创作工作台</div>
               <div className="truncate text-[11px] text-muted-foreground">{pageTitle}</div>
@@ -81,6 +90,19 @@ export default function MobileSiteShell({ children }: MobileSiteShellProps) {
               aria-label={moreOpen ? "关闭更多入口" : "打开更多入口"}
             >
               {moreOpen ? <X className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={async () => {
+                await logoutCurrentAuthUser().catch(() => undefined);
+                clearUser();
+                navigate("/login", { replace: true });
+              }}
+            >
+              退出
             </Button>
           </div>
         </div>

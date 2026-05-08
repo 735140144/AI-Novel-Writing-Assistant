@@ -1,8 +1,10 @@
 import type { World as PrismaWorld } from "@prisma/client";
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { worldImportExtractionPrompt } from "../../prompting/prompts/world/world.prompts";
+import { getRequestContext } from "../../runtime/requestContext";
 import {
   applyStructuredWorldToLegacyFields,
   buildWorldBindingSupport,
@@ -59,6 +61,29 @@ export interface ImportWorldInput {
 interface WorldTransferCallbacks {
   createSnapshot: (worldId: string, label?: string) => Promise<unknown>;
   queueRagUpsert: (ownerType: RagOwnerType, ownerId: string) => void;
+}
+
+async function getRequiredWorld(worldId: string) {
+  const context = getRequestContext();
+  const world = await prisma.world.findFirst({
+    where:
+      context?.authMode === "session" && context.userId
+        ? { id: worldId, userId: context.userId }
+        : { id: worldId },
+  });
+  if (!world) {
+    throw new AppError("世界观不存在。", 404);
+  }
+  return world;
+}
+
+function resolveOwnedWorldUserId(): string | null {
+  const context = getRequestContext();
+  const userId = context?.userId?.trim();
+  if (context?.authMode === "session" && userId) {
+    return userId;
+  }
+  return null;
 }
 
 function cleanJsonText(source: string): string {
@@ -178,10 +203,7 @@ export function serializeWorldSnapshot(world: PrismaWorld): string {
 }
 
 export async function exportWorldData(worldId: string, format: "markdown" | "json") {
-  const world = await prisma.world.findUnique({ where: { id: worldId } });
-  if (!world) {
-    throw new Error("World not found.");
-  }
+  const world = await getRequiredWorld(worldId);
   const structuredPayload = parseWorldStructurePayload(world.structureJson, world.bindingSupportJson);
 
   if (format === "json") {
@@ -352,6 +374,7 @@ export async function importWorldData(
 
   const world = await prisma.world.create({
     data: {
+      userId: resolveOwnedWorldUserId(),
       name: baseSource.name,
       description: (structuredFields.description as string | null | undefined) ?? payload.description ?? null,
       worldType: payload.worldType ?? "custom",

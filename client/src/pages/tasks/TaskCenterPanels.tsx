@@ -17,9 +17,10 @@ export function TaskCenterSummaryCards(props: {
   queuedCount: number;
   failedCount: number;
   waitingApprovalCount: number;
+  className?: string;
 }) {
   return (
-    <div className="task-status-summary-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className={props.className ?? "task-status-summary-grid grid gap-4 sm:grid-cols-2 xl:grid-cols-4"}>
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">运行中</CardTitle>
@@ -67,13 +68,16 @@ export function TaskCenterFiltersCard(props: {
   onKeywordChange: (value: string) => void;
   onOnlyAnomalyChange: (value: boolean) => void;
   onSortModeChange: (value: TaskSortMode) => void;
+  cardClassName?: string;
+  controlsClassName?: string;
+  anomalyPillClassName?: string;
 }) {
   return (
-    <Card className="task-filter-card">
+    <Card className={props.cardClassName ?? "task-filter-card"}>
       <CardHeader className="task-filter-header">
         <CardTitle className="text-base">筛选</CardTitle>
       </CardHeader>
-      <CardContent className="task-filter-controls grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-1">
+      <CardContent className={props.controlsClassName ?? "task-filter-controls grid min-w-0 grid-cols-3 gap-2 xl:grid-cols-1"}>
         <select
           className="task-filter-kind col-start-1 row-start-1 w-full rounded-md border bg-background px-2 py-2 text-sm xl:col-auto xl:row-auto"
           value={props.kind}
@@ -101,7 +105,7 @@ export function TaskCenterFiltersCard(props: {
           <option value="cancelled">已取消</option>
           <option value="succeeded">已完成</option>
         </select>
-        <label className="task-filter-pill col-start-3 row-start-1 flex items-center gap-1.5 rounded-md border bg-muted/30 px-1.5 py-2 text-xs text-muted-foreground sm:gap-2 sm:px-2 sm:text-sm xl:col-auto xl:row-auto">
+        <label className={props.anomalyPillClassName ?? "task-filter-pill col-start-3 row-start-1 flex items-center gap-1.5 rounded-md border bg-muted/30 px-1.5 py-2 text-xs text-muted-foreground sm:gap-2 sm:px-2 sm:text-sm xl:col-auto xl:row-auto"}>
           <input
             type="checkbox"
             checked={props.onlyAnomaly}

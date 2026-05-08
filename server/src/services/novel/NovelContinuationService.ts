@@ -1,5 +1,7 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import { runTextPrompt } from "../../prompting/core/promptRunner";
 import { novelContinuationRewritePrompt } from "../../prompting/prompts/novel/continuation.prompts";
 
@@ -110,14 +112,26 @@ function disabledPack(): ContinuationContextPack {
 }
 
 export class NovelContinuationService {
+  private getOwnedNovelScope(
+    userId?: string,
+  ): { userId: string | null; enforce: boolean } {
+    const context = getRequestContext();
+    const effectiveUserId = userId?.trim() || context?.userId?.trim() || null;
+    return {
+      userId: effectiveUserId,
+      enforce: context?.authMode === "session" && Boolean(effectiveUserId),
+    };
+  }
+
   async validateWritingModeConfig(input: {
     novelId?: string;
+    userId?: string;
     writingMode: "original" | "continuation";
     sourceNovelId?: string | null;
     sourceKnowledgeDocumentId?: string | null;
     continuationBookAnalysisId?: string | null;
   }): Promise<void> {
-    const { novelId, writingMode, sourceNovelId, sourceKnowledgeDocumentId, continuationBookAnalysisId } = input;
+    const { novelId, userId, writingMode, sourceNovelId, sourceKnowledgeDocumentId, continuationBookAnalysisId } = input;
 
     if (writingMode === "original") {
       if (sourceNovelId || sourceKnowledgeDocumentId || continuationBookAnalysisId) {
@@ -139,22 +153,28 @@ export class NovelContinuationService {
       if (novelId && sourceNovelId === novelId) {
         throw new Error("Source novel cannot be the same as current novel.");
       }
-      const sourceNovel = await prisma.novel.findUnique({
-        where: { id: sourceNovelId },
+      const scope = this.getOwnedNovelScope(userId);
+      const sourceNovel = await prisma.novel.findFirst({
+        where: scope.enforce
+          ? { id: sourceNovelId, userId: scope.userId }
+          : { id: sourceNovelId },
         select: { id: true },
       });
       if (!sourceNovel) {
-        throw new Error("Source novel not found.");
+        throw new AppError("指定的续写来源小说不存在。", 400);
       }
     }
 
     if (sourceKnowledgeDocumentId) {
-      const sourceKnowledge = await prisma.knowledgeDocument.findUnique({
-        where: { id: sourceKnowledgeDocumentId },
+      const scope = this.getOwnedNovelScope(userId);
+      const sourceKnowledge = await prisma.knowledgeDocument.findFirst({
+        where: scope.enforce
+          ? { id: sourceKnowledgeDocumentId, userId: scope.userId }
+          : { id: sourceKnowledgeDocumentId },
         select: { id: true, status: true, activeVersionId: true },
       });
       if (!sourceKnowledge || sourceKnowledge.status === "archived") {
-        throw new Error("Source knowledge document not found or archived.");
+        throw new AppError("指定的续写来源知识库不存在。", 400);
       }
       if (!sourceKnowledge.activeVersionId) {
         throw new Error("Source knowledge document has no active version.");
@@ -163,6 +183,7 @@ export class NovelContinuationService {
 
     if (continuationBookAnalysisId) {
       await this.assertContinuationAnalysisMatchesSource({
+        userId,
         sourceNovelId: sourceNovelId ?? null,
         sourceKnowledgeDocumentId: sourceKnowledgeDocumentId ?? null,
         continuationBookAnalysisId,
@@ -171,15 +192,18 @@ export class NovelContinuationService {
   }
 
   private async assertContinuationAnalysisMatchesSource(input: {
+    userId?: string;
     sourceNovelId: string | null;
     sourceKnowledgeDocumentId: string | null;
     continuationBookAnalysisId: string;
   }): Promise<void> {
-    const { sourceNovelId, sourceKnowledgeDocumentId, continuationBookAnalysisId } = input;
+    const { userId, sourceNovelId, sourceKnowledgeDocumentId, continuationBookAnalysisId } = input;
+    const scope = this.getOwnedNovelScope(userId);
 
     if (sourceKnowledgeDocumentId) {
       const analysis = await prisma.bookAnalysis.findFirst({
         where: {
+          ...(scope.enforce ? { userId: scope.userId } : {}),
           id: continuationBookAnalysisId,
           status: "succeeded",
           documentId: sourceKnowledgeDocumentId,
@@ -209,6 +233,7 @@ export class NovelContinuationService {
     }
     const analysis = await prisma.bookAnalysis.findFirst({
       where: {
+        ...(scope.enforce ? { userId: scope.userId } : {}),
         id: continuationBookAnalysisId,
         status: "succeeded",
         documentId: { in: documentIds },

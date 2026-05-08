@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma";
+import { getRequestContext } from "../../runtime/requestContext";
 import { AgentToolError, type AgentToolName } from "../types";
 import type { AgentToolDefinition } from "./toolTypes";
 import {
@@ -23,9 +24,17 @@ export const knowledgeToolDefinitions: Partial<
     inputSchema: listKnowledgeDocumentsInputSchema,
     outputSchema: listKnowledgeDocumentsOutputSchema,
     execute: async (_context, rawInput) => {
+      const requestContext = getRequestContext();
+      const scope =
+        requestContext?.authMode === "session" && requestContext.userId
+          ? { enforce: true, userId: requestContext.userId }
+          : { enforce: false, userId: null };
       const input = listKnowledgeDocumentsInputSchema.parse(rawInput);
       const rows = await prisma.knowledgeDocument.findMany({
-        where: input.status ? { status: input.status } : {},
+        where: {
+          ...(scope.enforce ? { userId: scope.userId } : {}),
+          ...(input.status ? { status: input.status } : {}),
+        },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         take: input.limit ?? 20,
       });
@@ -67,9 +76,14 @@ export const knowledgeToolDefinitions: Partial<
     inputSchema: knowledgeDocumentIdInputSchema,
     outputSchema: getKnowledgeDocumentDetailOutputSchema,
     execute: async (_context, rawInput) => {
+      const requestContext = getRequestContext();
+      const scope =
+        requestContext?.authMode === "session" && requestContext.userId
+          ? { enforce: true, userId: requestContext.userId }
+          : { enforce: false, userId: null };
       const input = knowledgeDocumentIdInputSchema.parse(rawInput);
-      const row = await prisma.knowledgeDocument.findUnique({
-        where: { id: input.documentId },
+      const row = await prisma.knowledgeDocument.findFirst({
+        where: scope.enforce ? { id: input.documentId, userId: scope.userId } : { id: input.documentId },
         include: {
           versions: {
             select: { id: true },
@@ -115,9 +129,14 @@ export const knowledgeToolDefinitions: Partial<
     inputSchema: knowledgeDocumentIdInputSchema,
     outputSchema: getIndexFailureReasonOutputSchema,
     execute: async (_context, rawInput) => {
+      const requestContext = getRequestContext();
+      const scope =
+        requestContext?.authMode === "session" && requestContext.userId
+          ? { enforce: true, userId: requestContext.userId }
+          : { enforce: false, userId: null };
       const input = knowledgeDocumentIdInputSchema.parse(rawInput);
-      const row = await prisma.knowledgeDocument.findUnique({
-        where: { id: input.documentId },
+      const row = await prisma.knowledgeDocument.findFirst({
+        where: scope.enforce ? { id: input.documentId, userId: scope.userId } : { id: input.documentId },
       });
       if (!row) {
         throw new AgentToolError("NOT_FOUND", "Knowledge document not found.");

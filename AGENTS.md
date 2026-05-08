@@ -64,35 +64,14 @@
 
 - Use `beta` as the stable pre-release integration branch between feature development branches and `main`.
 - The normal release path is: feature branch -> self-test / targeted verification -> merge into `beta` -> integration testing / regression checks / packaging verification -> merge into `main` -> public release or packaging upload.
-- `main` is the stable release branch. Do not merge a feature branch directly into `main` when the change affects product flow, shared contracts, runtime behavior, data migration, desktop packaging, or other end-to-end links.
+- `main` is the stable release branch. Do not merge a feature branch directly into `main` when the change affects product flow, shared contracts, runtime behavior, data migration, packaging, or other end-to-end links.
 - `beta` should represent the next candidate release. Keep it buildable, runnable, and suitable for acceptance testing; do not use it as a dumping ground for unfinished experiments.
-- If multiple feature branches are merged into `beta`, test the combined behavior on `beta` before promoting the batch to `main`, especially around automatic director flow, chapter execution, prompt/runtime contracts, migrations, and desktop startup or packaging.
+- If multiple feature branches are merged into `beta`, test the combined behavior on `beta` before promoting the batch to `main`, especially around automatic director flow, chapter execution, prompt/runtime contracts, migrations, and packaging or release setup.
 - If `beta` validation fails, fix the issue on the original feature branch when the fault is isolated, or on a short-lived `beta-fix` branch when the failure is caused by integration between multiple features. Merge the fix back into `beta` and rerun the failed checks before promoting.
 - Only promote `beta` to `main` when the release candidate has passed the required functional checks, build checks, and any packaging verification relevant to the release. After promotion, keep `beta` aligned with `main` so the next pre-release cycle starts from the released state.
 - For urgent production hotfixes, it is acceptable to branch from `main`, verify narrowly, merge back to `main`, and then immediately merge or cherry-pick the hotfix into `beta` so the pre-release branch does not lose the production fix.
-- Public desktop packaging and release upload should be performed from `main` or from a release tag created after `beta` has been promoted to `main`, not directly from a feature branch or an unverified `beta` state.
+- Public packaging and release upload should be performed from `main` or from a release tag created after `beta` has been promoted to `main`, not directly from a feature branch or an unverified `beta` state.
 - The branch name is `beta`. Do not create a separate `bate` branch; if such a typo branch appears, migrate any useful work to `beta` and remove the typo branch after confirming nothing is lost.
-
-### Desktop Branch Completion Workflow
-
-- Desktop feature development on `desktop-dev` is considered complete. Do not start new desktop feature work directly on `desktop-dev` unless the user explicitly reopens desktopization as an active development phase.
-- Treat `desktop-dev` as a completion candidate that must move through stabilization, pre-release verification, and branch retirement.
-- Before promoting desktop work, sync any required stable changes from `main` into `desktop-dev` when they affect shared contracts, runtime/state logic, build/dependency setup, desktop startup, packaging, or release verification.
-- Run desktop-focused verification on `desktop-dev` first, including development startup, first-run configuration, core web flow compatibility, build checks, and packaging checks relevant to the target release.
-- After `desktop-dev` passes its focused verification, merge it into `beta` for combined pre-release testing with the rest of the next release candidate.
-- Do not promote desktop work from `desktop-dev` directly to `main`. `beta` must pass integration testing and release packaging verification before the desktop work reaches `main`.
-- If `beta` exposes desktop integration failures, fix them on a short-lived desktop stabilization branch or directly on `desktop-dev` if the desktop branch has not yet been retired, then merge the fix back into `beta` and rerun the failed checks.
-- Once `beta` has been promoted to `main` and the released `main` contains the completed desktop work, retire `desktop-dev` so future desktop changes follow the normal feature branch -> `beta` -> `main` workflow.
-- After retirement, `desktop-dev` should not be reused as a long-lived integration branch. Create short-lived feature branches for future desktop fixes or improvements, and promote them through `beta`.
-
-## Desktop Packaging Upload Rules
-
-- Public desktop package upload to GitHub Releases is allowed only when the release version is driven by `desktop/package.json` and the Git tag is exactly `vX.Y.Z`.
-- Before any public desktop upload, verify that `desktop/package.json` `version` is a stable semver like `0.2.3`, with no `desktop-` prefix, no `-r1` style suffix, and no branch-only naming mixed into the version field.
-- The pushed release tag must match `desktop/package.json` exactly after adding the `v` prefix. Example: `desktop/package.json` is `0.2.3`, then the only allowed public release tag is `v0.2.3`.
-- Do not use `desktop-vX.Y.Z-rN`, `desktop-v*`, branch names, workflow dispatch on `main`, or any other non-matching ref as the identifier for a public desktop GitHub Release upload.
-- If a build is triggered manually or from a non-matching tag, treat it as verification or packaging only. It must not be treated as a valid public release upload.
-- If the required `vX.Y.Z` tag and `desktop/package.json` version are not aligned, stop before upload, fix the version/tag pair first, and then rerun the release flow.
 
 ## Prompt Governance
 
@@ -140,3 +119,25 @@
 
 - When the user later decides the product is stable enough for formal versions, versioning can transition from `date-only` to `version number + date`.
 - Until that explicit transition happens, do not add `v0.x.y`, tags, or release naming conventions into README, changelog, or other product-facing release notes by default.
+<!-- TRELLIS:START -->
+# Trellis Instructions
+
+These instructions are for AI assistants working in this project.
+
+Use the `/trellis:start` command when starting a new session to:
+- Initialize your developer identity
+- Understand current project context
+- Read relevant guidelines
+
+Use `@/.trellis/` to learn:
+- Development workflow (`workflow.md`)
+- Project structure guidelines (`spec/`)
+- Developer workspace (`workspace/`)
+
+If you're using Codex, project-scoped helpers may also live in:
+- `.agents/skills/` for reusable Trellis skills
+- `.codex/agents/` for optional custom subagents
+
+Keep this managed block so 'trellis update' can refresh the instructions.
+
+<!-- TRELLIS:END -->

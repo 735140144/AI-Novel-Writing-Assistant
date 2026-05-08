@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
+import { ensureSystemResourceStarterData } from "../bootstrap/SystemResourceBootstrapService";
 import type { GenreTreeDraft } from "./genreGenerate";
 
 export interface GenreTreeNode {
@@ -118,9 +120,23 @@ function collectSubtreeRows<T extends { id: string; parentId: string | null }>(
   return subtree;
 }
 
+function requireCurrentUserId(): string {
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    throw new AppError("未登录，请先登录。", 401);
+  }
+  return userId;
+}
+
 export class GenreService {
   async listGenreTree(): Promise<GenreTreeNode[]> {
+    const userId = requireCurrentUserId();
+    const existingCount = await prisma.novelGenre.count({ where: { userId } });
+    if (existingCount === 0) {
+      await ensureSystemResourceStarterData({ userId, includeStyleEngine: false });
+    }
     const rows = await prisma.novelGenre.findMany({
+      where: { userId },
       include: {
         _count: {
           select: {
@@ -165,6 +181,7 @@ export class GenreService {
   }
 
   async createGenreTree(input: CreateGenreTreeInput) {
+    const userId = requireCurrentUserId();
     const draft = normalizeDraft({
       name: input.name,
       description: input.description,
@@ -177,21 +194,22 @@ export class GenreService {
 
     return prisma.$transaction(async (tx) => {
       if (parentId) {
-        await this.ensureGenreExists(tx, parentId);
+        await this.ensureGenreExists(tx, userId, parentId);
       }
-      await this.ensureSiblingNameUnique(tx, draft.name, parentId, undefined);
+      await this.ensureSiblingNameUnique(tx, userId, draft.name, parentId, undefined);
 
       return this.createGenreNodeRecursive(tx, {
         ...draft,
         template,
-      }, parentId);
+      }, parentId, userId);
     });
   }
 
   async updateGenre(id: string, input: UpdateGenreInput) {
+    const userId = requireCurrentUserId();
     return prisma.$transaction(async (tx) => {
-      const existing = await tx.novelGenre.findUnique({
-        where: { id },
+      const existing = await tx.novelGenre.findFirst({
+        where: { id, userId },
       });
       if (!existing) {
         throw new AppError("类型不存在。", 404);
@@ -202,15 +220,15 @@ export class GenreService {
         : normalizeOptionalText(input.parentId);
 
       if (nextParentId) {
-        await this.ensureGenreExists(tx, nextParentId);
-        await this.ensureNoCycle(tx, id, nextParentId);
+        await this.ensureGenreExists(tx, userId, nextParentId);
+        await this.ensureNoCycle(tx, userId, id, nextParentId);
       }
 
       const nextName = input.name === undefined
         ? existing.name
         : normalizeRequiredName(input.name);
 
-      await this.ensureSiblingNameUnique(tx, nextName, nextParentId, id);
+      await this.ensureSiblingNameUnique(tx, userId, nextName, nextParentId, id);
 
       return tx.novelGenre.update({
         where: { id },
@@ -229,8 +247,10 @@ export class GenreService {
   }
 
   async deleteGenre(id: string): Promise<void> {
+    const userId = requireCurrentUserId();
     await prisma.$transaction(async (tx) => {
       const rows = await tx.novelGenre.findMany({
+        where: { userId },
         select: {
           id: true,
           parentId: true,
@@ -265,9 +285,11 @@ export class GenreService {
     tx: Prisma.TransactionClient,
     draft: GenreTreeDraft & { template?: string | null },
     parentId: string | null,
+    userId: string,
   ) {
     const created = await tx.novelGenre.create({
       data: {
+        userId,
         name: draft.name,
         description: normalizeOptionalText(draft.description),
         template: normalizeOptionalText(draft.template),
@@ -276,15 +298,15 @@ export class GenreService {
     });
 
     for (const child of draft.children) {
-      await this.createGenreNodeRecursive(tx, child, created.id);
+      await this.createGenreNodeRecursive(tx, child, created.id, userId);
     }
 
     return created;
   }
 
-  private async ensureGenreExists(tx: Prisma.TransactionClient, id: string): Promise<void> {
-    const existing = await tx.novelGenre.findUnique({
-      where: { id },
+  private async ensureGenreExists(tx: Prisma.TransactionClient, userId: string, id: string): Promise<void> {
+    const existing = await tx.novelGenre.findFirst({
+      where: { id, userId },
       select: { id: true },
     });
     if (!existing) {
@@ -294,12 +316,14 @@ export class GenreService {
 
   private async ensureSiblingNameUnique(
     tx: Prisma.TransactionClient,
+    userId: string,
     name: string,
     parentId: string | null,
     excludeId?: string,
   ): Promise<void> {
     const existing = await tx.novelGenre.findFirst({
       where: {
+        userId,
         name,
         parentId,
         ...(excludeId ? { id: { not: excludeId } } : {}),
@@ -313,6 +337,7 @@ export class GenreService {
 
   private async ensureNoCycle(
     tx: Prisma.TransactionClient,
+    userId: string,
     id: string,
     parentId: string,
   ): Promise<void> {
@@ -321,8 +346,8 @@ export class GenreService {
       if (cursorId === id) {
         throw new AppError("不能把类型移动到自己的子树下。", 400);
       }
-      const current: { parentId: string | null } | null = await tx.novelGenre.findUnique({
-        where: { id: cursorId },
+      const current: { parentId: string | null } | null = await tx.novelGenre.findFirst({
+        where: { id: cursorId, userId },
         select: { parentId: true },
       });
       cursorId = current?.parentId ?? null;

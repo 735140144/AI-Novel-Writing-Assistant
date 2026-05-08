@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma";
+import { getRequestContext } from "../../runtime/requestContext";
 import { novelSetupStatusService } from "../../services/novel/NovelSetupStatusService";
 import { AgentToolError, type AgentToolName } from "../types";
 import type { AgentToolDefinition } from "./toolTypes";
@@ -16,8 +17,13 @@ async function resolveGenreIdByName(name: string | undefined): Promise<string | 
   if (!name?.trim()) {
     return null;
   }
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    return null;
+  }
   const candidates = await prisma.novelGenre.findMany({
     where: {
+      userId,
       name: {
         contains: name.trim(),
       },

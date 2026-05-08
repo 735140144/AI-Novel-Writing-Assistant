@@ -2,6 +2,7 @@ import { serializeCommercialTagsJson } from "@ai-novel/shared/types/novelFraming
 import type { NovelAutoDirectorTaskSummary } from "@ai-novel/shared/types/novel";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import { mapNovelAutoDirectorTaskSummary } from "../task/novelWorkflowTaskSummary";
 import { getArchivedTaskIdSet } from "../task/taskArchive";
 import { NovelWorkflowService } from "./workflow/NovelWorkflowService";
@@ -26,15 +27,101 @@ export class NovelCoreCrudService {
   private readonly novelContinuationService = new NovelContinuationService();
   private readonly workflowService = new NovelWorkflowService();
 
+  private requireCurrentUserId(): string {
+    const userId = getRequestContext()?.userId?.trim();
+    if (!userId) {
+      throw new AppError("未登录，请先登录。", 401);
+    }
+    return userId;
+  }
+
+  private getOwnedNovelScope():
+    | { enforce: true; userId: string }
+    | { enforce: false; userId: null } {
+    const context = getRequestContext();
+    const userId = context?.userId?.trim();
+    if (context?.authMode === "session" && userId) {
+      return { enforce: true, userId };
+    }
+    return { enforce: false, userId: null };
+  }
+
+  private buildOwnedNovelWhere(id: string) {
+    const scope = this.getOwnedNovelScope();
+    if (scope.enforce) {
+      return { id, userId: scope.userId };
+    }
+    return { id };
+  }
+
   private validateStoryModeSelection(primaryStoryModeId?: string | null, secondaryStoryModeId?: string | null): void {
     if (primaryStoryModeId && secondaryStoryModeId && primaryStoryModeId === secondaryStoryModeId) {
       throw new AppError("主流派模式和副流派模式不能选择同一项。", 400);
     }
   }
 
+  private async validateCreativeResourceOwnership(input: {
+    userId: string;
+    genreId?: string | null;
+    primaryStoryModeId?: string | null;
+    secondaryStoryModeId?: string | null;
+    worldId?: string | null;
+  }): Promise<void> {
+    const genreId = input.genreId?.trim() || null;
+    const primaryStoryModeId = input.primaryStoryModeId?.trim() || null;
+    const secondaryStoryModeId = input.secondaryStoryModeId?.trim() || null;
+
+    if (genreId) {
+      const genre = await prisma.novelGenre.findFirst({
+        where: { id: genreId, userId: input.userId },
+        select: { id: true },
+      });
+      if (!genre) {
+        throw new AppError("指定的题材基底不存在。", 400);
+      }
+    }
+
+    const storyModeIds = [primaryStoryModeId, secondaryStoryModeId].filter((value): value is string => Boolean(value));
+    if (storyModeIds.length > 0) {
+      const rows = await prisma.novelStoryMode.findMany({
+        where: {
+          userId: input.userId,
+          id: { in: storyModeIds },
+        },
+        select: { id: true },
+      });
+      const ownedIds = new Set(rows.map((row) => row.id));
+      if (primaryStoryModeId && !ownedIds.has(primaryStoryModeId)) {
+        throw new AppError("指定的主推进模式不存在。", 400);
+      }
+      if (secondaryStoryModeId && !ownedIds.has(secondaryStoryModeId)) {
+        throw new AppError("指定的副推进模式不存在。", 400);
+      }
+    }
+
+    const worldId = input.worldId?.trim() || null;
+    if (worldId) {
+      const scope = this.getOwnedNovelScope();
+      const world = await prisma.world.findFirst({
+        where: scope.enforce
+          ? {
+            id: worldId,
+            userId: input.userId,
+          }
+          : { id: worldId },
+        select: { id: true },
+      });
+      if (!world) {
+        throw new AppError("指定的世界观不存在。", 400);
+      }
+    }
+  }
+
   async listNovels({ page, limit }: PaginationInput) {
+    const scope = this.getOwnedNovelScope();
     const [items, total] = await Promise.all([
       prisma.novel.findMany({
+        where: scope.enforce ? { userId: scope.userId } : undefined,
         skip: (page - 1) * limit,
         take: limit,
         orderBy: { updatedAt: "desc" },
@@ -76,7 +163,9 @@ export class NovelCoreCrudService {
           _count: { select: { chapters: true, characters: true, plotBeats: true } },
         },
       }),
-      prisma.novel.count(),
+      prisma.novel.count({
+        where: scope.enforce ? { userId: scope.userId } : undefined,
+      }),
     ]);
 
     const latestAutoDirectorTaskByNovelId = await this.listLatestVisibleAutoDirectorTasksByNovelIds(
@@ -151,6 +240,7 @@ export class NovelCoreCrudService {
   }
 
   async createNovel(input: CreateNovelInput) {
+    const userId = this.requireCurrentUserId();
     const writingMode = input.writingMode ?? "original";
     const sourceNovelId = input.sourceNovelId ?? null;
     const sourceKnowledgeDocumentId = input.sourceKnowledgeDocumentId ?? null;
@@ -162,8 +252,16 @@ export class NovelCoreCrudService {
     );
     const commercialTagsJson = serializeCommercialTagsJson(input.commercialTags);
     this.validateStoryModeSelection(input.primaryStoryModeId, input.secondaryStoryModeId);
+    await this.validateCreativeResourceOwnership({
+      userId,
+      genreId: input.genreId,
+      primaryStoryModeId: input.primaryStoryModeId,
+      secondaryStoryModeId: input.secondaryStoryModeId,
+      worldId: input.worldId,
+    });
 
     await this.novelContinuationService.validateWritingModeConfig({
+      userId,
       writingMode,
       sourceNovelId,
       sourceKnowledgeDocumentId,
@@ -172,6 +270,7 @@ export class NovelCoreCrudService {
 
     const created = await prisma.novel.create({
       data: {
+        userId: this.getOwnedNovelScope().enforce ? userId : null,
         title: input.title,
         description: input.description,
         targetAudience: normalizeOptionalTextForCreate(input.targetAudience),
@@ -216,8 +315,8 @@ export class NovelCoreCrudService {
   }
 
   async getNovelById(id: string) {
-    const row = await prisma.novel.findUnique({
-      where: { id },
+    const row = await prisma.novel.findFirst({
+      where: this.buildOwnedNovelWhere(id),
       include: {
         genre: true,
         primaryStoryMode: true,
@@ -237,10 +336,12 @@ export class NovelCoreCrudService {
   }
 
   async updateNovel(id: string, input: UpdateNovelInput) {
-    const existing = await prisma.novel.findUnique({
-      where: { id },
+    const userId = this.requireCurrentUserId();
+    const existing = await prisma.novel.findFirst({
+      where: this.buildOwnedNovelWhere(id),
       select: {
         id: true,
+        userId: true,
         worldId: true,
         writingMode: true,
         sourceNovelId: true,
@@ -252,7 +353,7 @@ export class NovelCoreCrudService {
       },
     });
     if (!existing) {
-      throw new Error("小说不存在");
+      throw new AppError("小说不存在。", 404);
     }
 
     const nextWritingMode = input.writingMode ?? (existing.writingMode === "continuation" ? "continuation" : "original");
@@ -272,14 +373,23 @@ export class NovelCoreCrudService {
     const nextSecondaryStoryModeId = input.secondaryStoryModeId !== undefined
       ? input.secondaryStoryModeId
       : existing.secondaryStoryModeId;
+    const nextWorldId = input.worldId !== undefined ? input.worldId : existing.worldId;
     const normalizedNextContinuationBookAnalysisId =
       nextWritingMode === "continuation" && (nextSourceNovelId || nextSourceKnowledgeDocumentId)
         ? nextContinuationBookAnalysisId
         : null;
     this.validateStoryModeSelection(nextPrimaryStoryModeId, nextSecondaryStoryModeId);
+    await this.validateCreativeResourceOwnership({
+      userId,
+      genreId: input.genreId !== undefined ? input.genreId : undefined,
+      primaryStoryModeId: nextPrimaryStoryModeId,
+      secondaryStoryModeId: nextSecondaryStoryModeId,
+      worldId: nextWorldId,
+    });
 
     await this.novelContinuationService.validateWritingModeConfig({
       novelId: id,
+      userId,
       writingMode: nextWritingMode,
       sourceNovelId: nextSourceNovelId,
       sourceKnowledgeDocumentId: nextSourceKnowledgeDocumentId,
@@ -300,7 +410,6 @@ export class NovelCoreCrudService {
     const commercialTagsJson = input.commercialTags !== undefined
       ? serializeCommercialTagsJson(input.commercialTags)
       : undefined;
-    const nextWorldId = input.worldId !== undefined ? input.worldId : existing.worldId;
     const shouldResetWorldSlice = nextWorldId !== existing.worldId;
 
     const updated = await prisma.novel.update({
@@ -345,9 +454,17 @@ export class NovelCoreCrudService {
   }
 
   async deleteNovel(id: string) {
+    const scope = this.getOwnedNovelScope();
+    const deleted = await prisma.novel.deleteMany({
+      where: scope.enforce
+        ? { id, userId: scope.userId }
+        : { id },
+    });
+    if (deleted.count === 0) {
+      throw new AppError("小说不存在。", 404);
+    }
     queueRagDelete("novel", id);
     queueRagDelete("bible", id);
-    await prisma.novel.delete({ where: { id } });
   }
 
   async listChapters(novelId: string) {

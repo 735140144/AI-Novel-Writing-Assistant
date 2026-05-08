@@ -65,6 +65,14 @@ export function getMobileNovelSaveState(
         isSaving: props.structuredTab.isSaving,
         onSave: props.structuredTab.onSave,
       };
+    case "publishing":
+      return {
+        visible: true,
+        label: "保存发布绑定",
+        savingLabel: "保存中...",
+        isSaving: props.publishingTab.isSavingBinding,
+        onSave: props.publishingTab.onSaveBinding,
+      };
     default:
       return {
         visible: false,

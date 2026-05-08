@@ -11,7 +11,7 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { DirectorLockScope } from "@ai-novel/shared/types/novelDirector";
 import type { VolumePlan } from "@ai-novel/shared/types/novel";
-import { getNovelDetail, getNovelQualityReport, getNovelVolumeWorkspace } from "@/api/novel";
+import { getNovelDetail, getNovelQualityReport, getNovelVolumeWorkspace, getPublishingWorkspace } from "@/api/novel";
 import { getActiveAutoDirectorTask } from "@/api/novelWorkflow";
 import { queryKeys } from "@/api/queryKeys";
 import { Badge } from "@/components/ui/badge";
@@ -97,6 +97,11 @@ export default function NovelWorkspaceRail(props: NovelWorkspaceRailProps) {
     queryFn: () => getNovelQualityReport(novelId),
     enabled: Boolean(novelId),
   });
+  const publishingWorkspaceQuery = useQuery({
+    queryKey: queryKeys.novels.publishingWorkspace(novelId),
+    queryFn: () => getPublishingWorkspace(novelId),
+    enabled: Boolean(novelId),
+  });
   const activeTaskQuery = useQuery({
     queryKey: queryKeys.novels.autoDirectorTask(novelId),
     queryFn: () => getActiveAutoDirectorTask(novelId),
@@ -112,6 +117,7 @@ export default function NovelWorkspaceRail(props: NovelWorkspaceRailProps) {
   const novelDetail = novelDetailQuery.data?.data;
   const workspace = volumeWorkspaceQuery.data?.data;
   const qualitySummary = qualityReportQuery.data?.data?.summary;
+  const publishingWorkspace = publishingWorkspaceQuery.data?.data;
   const activeTask = activeTaskQuery.data?.data ?? null;
   const resetSteps = useMemo(
     () => extractAutoDirectorResetStepsFromMeta(activeTask?.meta),
@@ -161,6 +167,11 @@ export default function NovelWorkspaceRail(props: NovelWorkspaceRailProps) {
       || Boolean(novelDetail?.bible)
       || Boolean((novelDetail?.plotBeats ?? []).length);
     const pipelineReady = Boolean(qualitySummary && qualitySummary.overall >= 75);
+    const publishingReady = Boolean(
+      publishingWorkspace?.binding
+      || publishingWorkspace?.activePlan
+      || publishingWorkspace?.recentJobs.length,
+    );
 
     return applyAutoDirectorResetStepReadiness({
       basic: basicReady,
@@ -170,8 +181,20 @@ export default function NovelWorkspaceRail(props: NovelWorkspaceRailProps) {
       structured: structuredReady,
       chapter: chapterReady,
       pipeline: pipelineReady,
+      publishing: publishingReady,
     } satisfies Record<NovelWorkspaceFlowTab, boolean>, resetSteps);
-  }, [novelDetail?.bible, novelDetail?.chapters, novelDetail?.characters, novelDetail?.plotBeats, qualitySummary, resetSteps, workspace]);
+  }, [
+    novelDetail?.bible,
+    novelDetail?.chapters,
+    novelDetail?.characters,
+    novelDetail?.plotBeats,
+    publishingWorkspace?.activePlan,
+    publishingWorkspace?.binding,
+    publishingWorkspace?.recentJobs.length,
+    qualitySummary,
+    resetSteps,
+    workspace,
+  ]);
 
   const workflowIndex = workflowCurrentTab
     ? NOVEL_WORKSPACE_FLOW_STEPS.findIndex((item) => item.key === workflowCurrentTab)

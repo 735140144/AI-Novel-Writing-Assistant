@@ -490,14 +490,14 @@ test("auto director follow-up service returns section-first counts and filters s
 test("auto director follow-up service detail reuses workflow detail and adds follow-up links", async () => {
   const originals = {
     isTaskArchived: taskArchive.isTaskArchived,
-    findUnique: prisma.novelWorkflowTask.findUnique,
+    findFirst: prisma.novelWorkflowTask.findFirst,
     notificationLogFindMany: prisma.autoDirectorFollowUpNotificationLog.findMany,
     adapterDetail: NovelWorkflowTaskAdapter.prototype.detail,
     getAutoDirectorChannelSettings: autoDirectorChannelSettingsService.getAutoDirectorChannelSettings,
   };
 
   taskArchive.isTaskArchived = async () => false;
-  prisma.novelWorkflowTask.findUnique = async ({ where }) => {
+  prisma.novelWorkflowTask.findFirst = async ({ where }) => {
     assert.equal(where.id, "task_detail");
     return buildWorkflowRow({
       id: "task_detail",
@@ -644,7 +644,7 @@ test("auto director follow-up service detail reuses workflow detail and adds fol
     assert.equal(detail.task.id, "task_detail");
   } finally {
     taskArchive.isTaskArchived = originals.isTaskArchived;
-    prisma.novelWorkflowTask.findUnique = originals.findUnique;
+    prisma.novelWorkflowTask.findFirst = originals.findFirst;
     prisma.autoDirectorFollowUpNotificationLog.findMany = originals.notificationLogFindMany;
     NovelWorkflowTaskAdapter.prototype.detail = originals.adapterDetail;
     autoDirectorChannelSettingsService.getAutoDirectorChannelSettings = originals.getAutoDirectorChannelSettings;
@@ -655,7 +655,7 @@ test("auto director follow-up service detail reuses workflow detail and adds fol
 test("auto director follow-up service detail only marks replaced when replacement task exists", async () => {
   const originals = {
     isTaskArchived: taskArchive.isTaskArchived,
-    findUnique: prisma.novelWorkflowTask.findUnique,
+    findFirst: prisma.novelWorkflowTask.findFirst,
     notificationLogFindMany: prisma.autoDirectorFollowUpNotificationLog.findMany,
     adapterDetail: NovelWorkflowTaskAdapter.prototype.detail,
     getAutoDirectorChannelSettings: autoDirectorChannelSettingsService.getAutoDirectorChannelSettings,
@@ -663,7 +663,7 @@ test("auto director follow-up service detail only marks replaced when replacemen
   const findUniqueCalls = [];
 
   taskArchive.isTaskArchived = async () => false;
-  prisma.novelWorkflowTask.findUnique = async ({ where }) => {
+  prisma.novelWorkflowTask.findFirst = async ({ where }) => {
     findUniqueCalls.push(where.id);
     if (where.id === "task_replaced_detail") {
       return buildWorkflowRow({
@@ -764,7 +764,7 @@ test("auto director follow-up service detail only marks replaced when replacemen
     assert.deepEqual(healCalls, []);
   } finally {
     taskArchive.isTaskArchived = originals.isTaskArchived;
-    prisma.novelWorkflowTask.findUnique = originals.findUnique;
+    prisma.novelWorkflowTask.findFirst = originals.findFirst;
     prisma.autoDirectorFollowUpNotificationLog.findMany = originals.notificationLogFindMany;
     NovelWorkflowTaskAdapter.prototype.detail = originals.adapterDetail;
     autoDirectorChannelSettingsService.getAutoDirectorChannelSettings = originals.getAutoDirectorChannelSettings;

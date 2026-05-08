@@ -1,6 +1,10 @@
 import { prisma } from "../../db/prisma";
 import { taskCenterService } from "../../services/task/TaskCenterService";
 import { buildTaskRecoveryHint, normalizeFailureSummary } from "../../services/task/taskSupport";
+import {
+  applyOwnedGenerationJobWhere,
+  buildOwnedAgentRunWhere,
+} from "../../services/task/taskOwnership";
 import { AgentToolError, type AgentToolName } from "../types";
 import type { AgentToolDefinition } from "./toolTypes";
 import {
@@ -134,8 +138,8 @@ export const taskToolDefinitions: Partial<
     outputSchema: getRunFailureReasonOutputSchema,
     execute: async (_context, rawInput) => {
       const input = getRunFailureReasonInputSchema.parse(rawInput);
-      const run = await prisma.agentRun.findUnique({
-        where: { id: input.runId },
+      const run = await prisma.agentRun.findFirst({
+        where: buildOwnedAgentRunWhere(input.runId),
       });
       if (!run) {
         throw new AgentToolError("NOT_FOUND", "Agent run not found.");
@@ -221,8 +225,8 @@ export const taskToolDefinitions: Partial<
     execute: async (_context, rawInput) => {
       const input = explainGenerationBlockerInputSchema.parse(rawInput);
       if (input.runId?.trim()) {
-        const run = await prisma.agentRun.findUnique({
-          where: { id: input.runId },
+        const run = await prisma.agentRun.findFirst({
+          where: buildOwnedAgentRunWhere(input.runId),
         });
         if (run && run.novelId === input.novelId && run.error?.trim()) {
           return explainGenerationBlockerOutputSchema.parse({
@@ -239,7 +243,7 @@ export const taskToolDefinitions: Partial<
       }
 
       const job = await prisma.generationJob.findFirst({
-        where: {
+        where: applyOwnedGenerationJobWhere({
           novelId: input.novelId,
           ...(input.chapterOrder != null
             ? {
@@ -247,7 +251,7 @@ export const taskToolDefinitions: Partial<
               endOrder: { gte: input.chapterOrder },
             }
             : {}),
-        },
+        }),
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
       });
 

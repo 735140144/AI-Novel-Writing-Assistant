@@ -1,6 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
+import { ensureSystemResourceStarterData } from "../bootstrap/SystemResourceBootstrapService";
 import { buildStoryModePromptBlock, normalizeStoryModeOutput, sanitizeStoryModeProfile, serializeStoryModeProfile } from "./storyModeProfile";
 import type { StoryModeTreeDraft } from "./storyModeGenerate";
 
@@ -133,9 +135,23 @@ function collectSubtreeRows<T extends { id: string; parentId: string | null }>(
   return subtree;
 }
 
+function requireCurrentUserId(): string {
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    throw new AppError("未登录，请先登录。", 401);
+  }
+  return userId;
+}
+
 export class StoryModeService {
   async listStoryModeTree(): Promise<StoryModeTreeNode[]> {
+    const userId = requireCurrentUserId();
+    const existingCount = await prisma.novelStoryMode.count({ where: { userId } });
+    if (existingCount === 0) {
+      await ensureSystemResourceStarterData({ userId, includeStyleEngine: false });
+    }
     const rows = await prisma.novelStoryMode.findMany({
+      where: { userId },
       include: {
         _count: {
           select: {
@@ -176,6 +192,7 @@ export class StoryModeService {
   }
 
   async createStoryModeTree(input: CreateStoryModeTreeInput) {
+    const userId = requireCurrentUserId();
     const draft = normalizeDraft({
       name: input.name,
       description: input.description,
@@ -189,15 +206,16 @@ export class StoryModeService {
 
     return prisma.$transaction(async (tx) => {
       if (parentId) {
-        await this.ensureParentCanAcceptChild(tx, parentId);
+        await this.ensureParentCanAcceptChild(tx, userId, parentId);
       }
-      await this.ensureSiblingNameUnique(tx, draft.name, parentId, undefined);
-      const created = await this.createStoryModeNodeRecursive(tx, draft, parentId);
+      await this.ensureSiblingNameUnique(tx, userId, draft.name, parentId, undefined);
+      const created = await this.createStoryModeNodeRecursive(tx, draft, parentId, userId);
       return normalizeStoryModeOutput(created);
     });
   }
 
   async createStoryModeChildren(input: CreateStoryModeChildrenInput) {
+    const userId = requireCurrentUserId();
     const parentId = normalizeOptionalText(input.parentId);
     if (!parentId) {
       throw new AppError("父级流派模式不能为空。", 400);
@@ -219,10 +237,10 @@ export class StoryModeService {
     }
 
     return prisma.$transaction(async (tx) => {
-      await this.ensureParentCanAcceptChild(tx, parentId);
+      await this.ensureParentCanAcceptChild(tx, userId, parentId);
 
       const existingSiblings = await tx.novelStoryMode.findMany({
-        where: { parentId },
+        where: { userId, parentId },
         select: { name: true },
       });
       const existingNames = new Set(existingSiblings.map((item) => normalizeNameKey(item.name)));
@@ -235,7 +253,7 @@ export class StoryModeService {
 
       const created = [];
       for (const draft of drafts) {
-        const node = await this.createStoryModeNodeRecursive(tx, draft, parentId);
+        const node = await this.createStoryModeNodeRecursive(tx, draft, parentId, userId);
         created.push(normalizeStoryModeOutput(node));
       }
       return created;
@@ -243,9 +261,10 @@ export class StoryModeService {
   }
 
   async updateStoryMode(id: string, input: UpdateStoryModeInput) {
+    const userId = requireCurrentUserId();
     return prisma.$transaction(async (tx) => {
-      const existing = await tx.novelStoryMode.findUnique({
-        where: { id },
+      const existing = await tx.novelStoryMode.findFirst({
+        where: { id, userId },
         include: {
           _count: {
             select: { children: true },
@@ -261,8 +280,8 @@ export class StoryModeService {
         : normalizeOptionalText(input.parentId);
 
       if (nextParentId) {
-        await this.ensureParentCanAcceptChild(tx, nextParentId);
-        await this.ensureNoCycle(tx, id, nextParentId);
+        await this.ensureParentCanAcceptChild(tx, userId, nextParentId);
+        await this.ensureNoCycle(tx, userId, id, nextParentId);
         if (existing._count.children > 0) {
           throw new AppError("带子节点的流派模式不能移动到其他父类下，否则会超过两级结构。", 400);
         }
@@ -272,7 +291,7 @@ export class StoryModeService {
         ? existing.name
         : normalizeRequiredName(input.name);
 
-      await this.ensureSiblingNameUnique(tx, nextName, nextParentId, id);
+      await this.ensureSiblingNameUnique(tx, userId, nextName, nextParentId, id);
 
       const updated = await tx.novelStoryMode.update({
         where: { id },
@@ -296,8 +315,10 @@ export class StoryModeService {
   }
 
   async deleteStoryMode(id: string): Promise<void> {
+    const userId = requireCurrentUserId();
     await prisma.$transaction(async (tx) => {
       const rows = await tx.novelStoryMode.findMany({
+        where: { userId },
         select: {
           id: true,
           parentId: true,
@@ -353,9 +374,11 @@ export class StoryModeService {
     tx: Prisma.TransactionClient,
     draft: StoryModeTreeDraft,
     parentId: string | null,
+    userId: string,
   ) {
     const created = await tx.novelStoryMode.create({
       data: {
+        userId,
         name: draft.name,
         description: normalizeOptionalText(draft.description),
         template: normalizeOptionalText(draft.template),
@@ -365,15 +388,15 @@ export class StoryModeService {
     });
 
     for (const child of draft.children) {
-      await this.createStoryModeNodeRecursive(tx, child, created.id);
+      await this.createStoryModeNodeRecursive(tx, child, created.id, userId);
     }
 
     return created;
   }
 
-  private async ensureParentCanAcceptChild(tx: Prisma.TransactionClient, id: string): Promise<void> {
-    const existing = await tx.novelStoryMode.findUnique({
-      where: { id },
+  private async ensureParentCanAcceptChild(tx: Prisma.TransactionClient, userId: string, id: string): Promise<void> {
+    const existing = await tx.novelStoryMode.findFirst({
+      where: { id, userId },
       select: { id: true, parentId: true },
     });
     if (!existing) {
@@ -386,12 +409,14 @@ export class StoryModeService {
 
   private async ensureSiblingNameUnique(
     tx: Prisma.TransactionClient,
+    userId: string,
     name: string,
     parentId: string | null,
     excludeId?: string,
   ): Promise<void> {
     const existing = await tx.novelStoryMode.findFirst({
       where: {
+        userId,
         name,
         parentId,
         ...(excludeId ? { id: { not: excludeId } } : {}),
@@ -405,6 +430,7 @@ export class StoryModeService {
 
   private async ensureNoCycle(
     tx: Prisma.TransactionClient,
+    userId: string,
     id: string,
     parentId: string,
   ): Promise<void> {
@@ -413,8 +439,8 @@ export class StoryModeService {
       if (cursorId === id) {
         throw new AppError("不能把流派模式移动到自己的子树下。", 400);
       }
-      const current: { parentId: string | null } | null = await tx.novelStoryMode.findUnique({
-        where: { id: cursorId },
+      const current: { parentId: string | null } | null = await tx.novelStoryMode.findFirst({
+        where: { id: cursorId, userId },
         select: { parentId: true },
       });
       cursorId = current?.parentId ?? null;

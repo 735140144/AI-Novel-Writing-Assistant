@@ -23,6 +23,11 @@ import {
   buildSteps,
   resolveLegacyTaskStatusesForList,
 } from "../taskCenter.shared";
+import {
+  applyOwnedGenerationJobWhere,
+  applyOwnedNovelWorkflowTaskWhere,
+  buildOwnedGenerationJobWhere,
+} from "../taskOwnership";
 
 type PipelineRow = {
   id: string;
@@ -127,7 +132,7 @@ export class PipelineTaskAdapter {
     }
     const archivedIds = await getArchivedTaskIds("novel_pipeline");
     const rows = await prisma.generationJob.findMany({
-      where: {
+      where: applyOwnedGenerationJobWhere({
         ...(archivedIds.length
           ? {
             id: {
@@ -144,7 +149,7 @@ export class PipelineTaskAdapter {
             ],
           }
           : {}),
-      },
+      }),
       include: {
         novel: {
           select: {
@@ -165,8 +170,8 @@ export class PipelineTaskAdapter {
       return null;
     }
 
-    const row = await prisma.generationJob.findUnique({
-      where: { id },
+    const row = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(id),
       include: {
         novel: {
           select: {
@@ -239,12 +244,12 @@ export class PipelineTaskAdapter {
 
   private async cancelLinkedAutoDirectorTask(pipelineJobId: string, novelId: string): Promise<void> {
     const linkedWorkflow = await prisma.novelWorkflowTask.findFirst({
-      where: {
+      where: applyOwnedNovelWorkflowTaskWhere({
         lane: "auto_director",
         novelId,
         status: { in: ["queued", "running", "waiting_approval"] },
         seedPayloadJson: { contains: `"pipelineJobId":"${pipelineJobId}"` },
-      },
+      }),
       select: { id: true },
       orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     });
@@ -259,8 +264,8 @@ export class PipelineTaskAdapter {
       return null;
     }
 
-    const job = await prisma.generationJob.findUnique({
-      where: { id },
+    const job = await prisma.generationJob.findFirst({
+      where: buildOwnedGenerationJobWhere(id),
     });
     if (!job) {
       throw new AppError("Task not found.", 404);

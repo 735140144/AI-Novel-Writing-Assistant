@@ -25,6 +25,7 @@ export interface AutoDirectorAutoApprovalRecordRow {
 
 export interface RecordAutoDirectorAutoApprovalInput {
   taskId: string;
+  userId?: string | null;
   novelId: string;
   novelTitle?: string | null;
   checkpointType: NovelWorkflowCheckpoint;
@@ -141,6 +142,7 @@ export async function recordAutoDirectorAutoApproval(
 
     await new AutoDirectorFollowUpNotificationService().notifyAutoApproved({
       taskId: input.taskId,
+      userId: input.userId ?? null,
       novelId: input.novelId,
       novelTitle: input.novelTitle?.trim() || input.novelId,
       checkpointType: input.checkpointType,
@@ -207,6 +209,7 @@ export async function recordAutoDirectorAutoApprovalFromTask(input: {
   const scopeLabel = seedPayload?.autoExecution?.scopeLabel;
   return recordAutoDirectorAutoApproval({
     taskId: input.taskId,
+    userId: task.userId ?? null,
     novelId: task.novelId,
     novelTitle: task.novel?.title ?? null,
     checkpointType: input.checkpointType,

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CopyCheck, RefreshCw, Save } from "lucide-react";
 import type { StructuredFallbackSettings } from "@/api/settings";
 import {
-  getAPIKeySettings,
+  getLLMProviders,
   getModelRoutes,
   getStructuredFallbackConfig,
   saveModelRoute,
@@ -51,9 +51,9 @@ export default function ModelRoutesPage() {
   const [bulkDraft, setBulkDraft] = useState<RouteDraft | null>(null);
   const [structuredFallbackDraft, setStructuredFallbackDraft] = useState<StructuredFallbackDraft | null>(null);
 
-  const apiKeySettingsQuery = useQuery({
-    queryKey: queryKeys.settings.apiKeys,
-    queryFn: getAPIKeySettings,
+  const providerCatalogQuery = useQuery({
+    queryKey: queryKeys.llm.providers,
+    queryFn: getLLMProviders,
   });
 
   const modelRoutesQuery = useQuery({
@@ -110,7 +110,16 @@ export default function ModelRoutesPage() {
     },
   });
 
-  const providerConfigs = useMemo(() => apiKeySettingsQuery.data?.data ?? [], [apiKeySettingsQuery.data?.data]);
+  const providerConfigs = useMemo(
+    () => Object.entries(providerCatalogQuery.data?.data ?? {}).map(([provider, value]) => ({
+      provider,
+      name: value.name,
+      displayName: value.name,
+      currentModel: value.defaultModel,
+      models: value.models,
+    })),
+    [providerCatalogQuery.data?.data],
+  );
   const modelRoutes = modelRoutesQuery.data?.data;
   const modelRouteConnectivity = modelRouteConnectivityQuery.data?.data;
   const structuredFallback = structuredFallbackQuery.data?.data;
@@ -131,7 +140,7 @@ export default function ModelRoutesPage() {
     };
   }, [modelRouteConnectivity?.statuses, modelRouteConnectivity?.testedAt]);
   const preferredProviderConfig = useMemo(
-    () => providerConfigs.find((item) => item.isConfigured && item.isActive && getPreferredModel(item))
+    () => providerConfigs.find((item) => getPreferredModel(item))
       ?? providerConfigs.find((item) => getPreferredModel(item))
       ?? providerConfigs[0],
     [providerConfigs],

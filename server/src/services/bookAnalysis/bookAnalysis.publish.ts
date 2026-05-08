@@ -1,6 +1,7 @@
 import type { BookAnalysisDetail, BookAnalysisPublishResult } from "@ai-novel/shared/types/bookAnalysis";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import type { KnowledgeService } from "../knowledge/KnowledgeService";
 import { buildPublishDocumentTitle, buildPublishFileName, buildPublishMarkdown } from "./bookAnalysis.export";
 
@@ -10,9 +11,14 @@ export async function publishAnalysisToNovel(input: {
   knowledgeService: Pick<KnowledgeService, "createDocument">;
   getAnalysisById: (analysisId: string) => Promise<BookAnalysisDetail | null>;
 }): Promise<BookAnalysisPublishResult> {
+  const requestContext = getRequestContext();
+  const scopedNovelWhere =
+    requestContext?.authMode === "session" && requestContext.userId?.trim()
+      ? { id: input.novelId, userId: requestContext.userId.trim() }
+      : { id: input.novelId };
   const [detail, novel] = await Promise.all([
     input.getAnalysisById(input.analysisId),
-    prisma.novel.findUnique({ where: { id: input.novelId }, select: { id: true } }),
+    prisma.novel.findFirst({ where: scopedNovelWhere, select: { id: true } }),
   ]);
 
   if (!detail) {

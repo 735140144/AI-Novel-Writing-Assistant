@@ -16,6 +16,7 @@ import type { BookContract } from "@ai-novel/shared/types/novelWorkflow";
 import type { StoryMacroPlan } from "@ai-novel/shared/types/storyMacro";
 import type { StoryWorldSliceView } from "@ai-novel/shared/types/storyWorldSlice";
 import type { NovelExportScope } from "@ai-novel/shared/types/novelExport";
+import type { PublishingWorkspaceResponse } from "@ai-novel/shared/types/publishing";
 
 export type ExportChapter = Chapter & { chapterSummary?: ChapterSummary | null };
 export type ExportCharacter = Character;
@@ -191,6 +192,10 @@ export interface NovelExportPipelineSection {
   chapterAuditReports: ExportChapterAuditReport[];
 }
 
+export interface NovelExportPublishingSection {
+  workspace: PublishingWorkspaceResponse | null;
+}
+
 export interface NovelExportSectionMap {
   basic: NovelExportBasicSection;
   story_macro: NovelExportStoryMacroSection;
@@ -199,6 +204,7 @@ export interface NovelExportSectionMap {
   structured: NovelExportStructuredSection;
   chapter: NovelExportChapterSection;
   pipeline: NovelExportPipelineSection;
+  publishing: NovelExportPublishingSection;
 }
 
 export type NovelExportSectionScope = Exclude<NovelExportScope, "full">;

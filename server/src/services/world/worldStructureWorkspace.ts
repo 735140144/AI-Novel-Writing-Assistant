@@ -1,5 +1,7 @@
 import type { WorldVisualizationPayload } from "@ai-novel/shared/types/world";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
+import { getRequestContext } from "../../runtime/requestContext";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import {
   applyStructuredWorldToLegacyFields,
@@ -32,9 +34,15 @@ interface WorldStructureCallbacks {
 }
 
 async function getRequiredWorld(worldId: string) {
-  const world = await prisma.world.findUnique({ where: { id: worldId } });
+  const context = getRequestContext();
+  const world = await prisma.world.findFirst({
+    where:
+      context?.authMode === "session" && context.userId
+        ? { id: worldId, userId: context.userId }
+        : { id: worldId },
+  });
   if (!world) {
-    throw new Error("World not found.");
+    throw new AppError("世界观不存在。", 404);
   }
   return world;
 }

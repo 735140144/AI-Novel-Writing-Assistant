@@ -92,9 +92,13 @@ router.get("/providers", async (_req, res, next) => {
 
 router.get("/model-routes", async (_req, res, next) => {
   try {
+    const userId = _req.user?.id;
+    if (!userId) {
+      throw new AppError("未登录，请先登录。", 401);
+    }
     const data = {
       taskTypes: MODEL_ROUTE_TASK_TYPES,
-      routes: await listModelRouteConfigs(),
+      routes: await listModelRouteConfigs({ userId }),
     };
     res.status(200).json({
       success: true,
@@ -169,6 +173,10 @@ router.put(
   async (req, res, next) => {
     try {
       const body = req.body as z.infer<typeof modelRouteUpsertSchema>;
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new AppError("未登录，请先登录。", 401);
+      }
       await upsertModelRouteConfig(body.taskType, {
         provider: body.provider,
         model: body.model,
@@ -176,7 +184,7 @@ router.put(
         maxTokens: body.maxTokens ?? null,
         requestProtocol: body.requestProtocol,
         structuredResponseFormat: body.structuredResponseFormat,
-      });
+      }, { userId });
       res.status(200).json({
         success: true,
         message: "模型路由已更新。",

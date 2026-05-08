@@ -66,6 +66,21 @@ export default function SettingsNavigationCards() {
           </Button>
         </CardContent>
       </Card>
+
+      <Card className="min-w-0 overflow-hidden">
+        <CardHeader>
+          <CardTitle>个人偏好</CardTitle>
+          <CardDescription className={AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}>按当前账号配置自动推进偏好和导演跟进通道。</CardDescription>
+        </CardHeader>
+        <CardContent className={AUTO_DIRECTOR_MOBILE_CLASSES.settingsEntryActionRow}>
+          <div className={`min-w-0 text-sm text-muted-foreground ${AUTO_DIRECTOR_MOBILE_CLASSES.wrapText}`}>
+            这里保存的是你的个人默认授权和消息通道，不影响其他用户。
+          </div>
+          <Button asChild className={AUTO_DIRECTOR_MOBILE_CLASSES.fullWidthAction}>
+            <Link to="/preferences">进入个人偏好</Link>
+          </Button>
+        </CardContent>
+      </Card>
     </>
   );
 }

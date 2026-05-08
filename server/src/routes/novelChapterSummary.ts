@@ -3,6 +3,7 @@ import type { ApiResponse } from "@ai-novel/shared/types/api";
 import { z } from "zod";
 import { llmProviderSchema } from "../llm/providerSchema";
 import { authMiddleware } from "../middleware/auth";
+import { requireOwnedNovel } from "../middleware/novelOwnership";
 import { validate } from "../middleware/validate";
 import { NovelChapterSummaryService } from "../services/novel/NovelChapterSummaryService";
 
@@ -21,6 +22,9 @@ const llmGenerateSchema = z.object({
 });
 
 router.use(authMiddleware);
+router.param("id", (req, res, next, id) => {
+  void requireOwnedNovel(req, res, next, id);
+});
 
 router.post(
   "/:id/chapters/:chapterId/summary/generate",

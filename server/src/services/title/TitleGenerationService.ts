@@ -1,9 +1,11 @@
 import type { LLMProvider } from "@ai-novel/shared/types/llm";
 import type { TitleFactorySuggestion } from "@ai-novel/shared/types/title";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { resolveLLMClientOptions } from "../../llm/factory";
 import { selectStructuredOutputStrategy } from "../../llm/structuredOutput";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
+import { getRequestContext } from "../../runtime/requestContext";
 import { titleGenerationPrompt } from "../../prompting/prompts/helper/titleGeneration.prompt";
 import {
   collectUniqueSuggestions,
@@ -112,8 +114,17 @@ function ensureGenerationQuality(titles: TitleFactorySuggestion[], targetCount: 
   }
 }
 
+function requireCurrentUserId(): string {
+  const userId = getRequestContext()?.userId?.trim();
+  if (!userId) {
+    throw new AppError("未登录，请先登录。", 401);
+  }
+  return userId;
+}
+
 export class TitleGenerationService {
   async generateTitleIdeas(input: GenerateTitleIdeasInput): Promise<{ titles: TitleFactorySuggestion[] }> {
+    const userId = requireCurrentUserId();
     const mode = input.mode;
     const brief = toTrimmedString(input.brief);
     const referenceTitle = toTrimmedString(input.referenceTitle);
@@ -127,11 +138,15 @@ export class TitleGenerationService {
     }
 
     const genre = input.genreId
-      ? await prisma.novelGenre.findUnique({
-        where: { id: input.genreId },
+      ? await prisma.novelGenre.findFirst({
+        where: { id: input.genreId, userId },
         select: { id: true, name: true, description: true },
       })
       : null;
+
+    if (input.genreId && !genre) {
+      throw new AppError("指定的类型不存在。", 400);
+    }
 
     return this.runGeneration({
       mode,

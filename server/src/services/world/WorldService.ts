@@ -8,8 +8,10 @@ import type {
   WorldVisualizationPayload,
 } from "@ai-novel/shared/types/world";
 import { prisma } from "../../db/prisma";
+import { AppError } from "../../middleware/errorHandler";
 import { runStructuredPrompt } from "../../prompting/core/promptRunner";
 import { worldAxiomSuggestionPrompt } from "../../prompting/prompts/world/world.prompts";
+import { getRequestContext } from "../../runtime/requestContext";
 import { getTemplateByKey, LAYER_FIELD_MAP, WORLD_LAYER_ORDER, WORLD_TEMPLATES } from "./worldTemplates";
 import { buildConsistencySummary, localizeConsistencyIssue } from "./worldConsistency";
 import {
@@ -76,8 +78,67 @@ import { ragServices } from "../rag";
 import type { RagOwnerType } from "../rag/types";
 
 export class WorldService {
+  private requireCurrentUserId(): string {
+    const userId = getRequestContext()?.userId?.trim();
+    if (!userId) {
+      throw new AppError("未登录，请先登录。", 401);
+    }
+    return userId;
+  }
+
+  private getOwnedWorldScope():
+    | { enforce: true; userId: string }
+    | { enforce: false; userId: null } {
+    const context = getRequestContext();
+    const userId = context?.userId?.trim();
+    if (context?.authMode === "session" && userId) {
+      return { enforce: true, userId };
+    }
+    return { enforce: false, userId: null };
+  }
+
+  private async assertAvailableKnowledgeDocuments(documentIds: string[]): Promise<void> {
+    if (documentIds.length === 0) {
+      return;
+    }
+    const documents = await prisma.knowledgeDocument.findMany({
+      where: {
+        id: { in: documentIds },
+        status: { not: "archived" },
+      },
+      select: { id: true },
+    });
+    if (documents.length !== documentIds.length) {
+      throw new AppError("指定的知识库资料不存在。", 400);
+    }
+  }
+
+  private async assertOwnedWorldReference(userId: string, worldId: string, message: string): Promise<void> {
+    const scope = this.getOwnedWorldScope();
+    const world = await prisma.world.findFirst({
+      where: scope.enforce ? { id: worldId, userId } : { id: worldId },
+      select: { id: true },
+    });
+    if (!world) {
+      throw new AppError(message, 400);
+    }
+  }
+
+  private async getOwnedWorldOrThrow(worldId: string) {
+    const scope = this.getOwnedWorldScope();
+    const world = await prisma.world.findFirst({
+      where: scope.enforce ? { id: worldId, userId: scope.userId } : { id: worldId },
+    });
+    if (!world) {
+      throw new AppError("世界观不存在。", 404);
+    }
+    return world;
+  }
+
   async listWorlds() {
+    const scope = this.getOwnedWorldScope();
     return prisma.world.findMany({
+      where: scope.enforce ? { userId: scope.userId } : undefined,
       orderBy: { updatedAt: "desc" },
     });
   }
@@ -103,19 +164,10 @@ export class WorldService {
   }
 
   async createWorld(input: CreateWorldInput) {
+    const userId = this.requireCurrentUserId();
+    const scope = this.getOwnedWorldScope();
     const knowledgeDocumentIds = uniqueKnowledgeDocumentIds(input.knowledgeDocumentIds);
-    if (knowledgeDocumentIds.length > 0) {
-      const documents = await prisma.knowledgeDocument.findMany({
-        where: {
-          id: { in: knowledgeDocumentIds },
-          status: { not: "archived" },
-        },
-        select: { id: true },
-      });
-      if (documents.length !== knowledgeDocumentIds.length) {
-        throw new Error("Some knowledge documents are missing or archived.");
-      }
-    }
+    await this.assertAvailableKnowledgeDocuments(knowledgeDocumentIds);
 
     const seededStructure = input.structure
       ? normalizeWorldStructuredData(input.structure)
@@ -150,6 +202,7 @@ export class WorldService {
 
     const world = await prisma.world.create({
       data: {
+        userId: scope.enforce ? userId : null,
         name: input.name,
         description: (structuredFields.description as string | null | undefined) ?? input.description,
         worldType: input.worldType,
@@ -192,8 +245,9 @@ export class WorldService {
   }
 
   async getWorldById(id: string) {
-    return prisma.world.findUnique({
-      where: { id },
+    const scope = this.getOwnedWorldScope();
+    return prisma.world.findFirst({
+      where: scope.enforce ? { id, userId: scope.userId } : { id },
       include: {
         deepeningQA: { orderBy: { createdAt: "desc" } },
         consistencyIssues: { orderBy: [{ status: "asc" }, { severity: "desc" }, { createdAt: "desc" }] },
@@ -203,7 +257,10 @@ export class WorldService {
   }
 
   async updateWorld(id: string, input: Partial<CreateWorldInput>) {
-    const world = await prisma.world.findUnique({ where: { id } });
+    const scope = this.getOwnedWorldScope();
+    const world = await prisma.world.findFirst({
+      where: scope.enforce ? { id, userId: scope.userId } : { id },
+    });
     if (!world) {
       throw new Error("World not found.");
     }
@@ -234,7 +291,7 @@ export class WorldService {
     }
 
     const updated = await prisma.world.update({
-      where: { id },
+      where: { id: world.id },
       data: {
         ...legacyInput,
         ...structuredUpdate,
@@ -246,18 +303,21 @@ export class WorldService {
   }
 
   async deleteWorld(id: string) {
+    const scope = this.getOwnedWorldScope();
     this.queueRagDelete("world", id);
-    await prisma.world.delete({ where: { id } });
+    const deleted = await prisma.world.deleteMany({
+      where: scope.enforce ? { id, userId: scope.userId } : { id },
+    });
+    if (deleted.count === 0) {
+      throw new Error("World not found.");
+    }
   }
 
   async suggestAxioms(
     worldId: string,
     options: { provider?: LLMProvider; model?: string },
   ) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
 
     const template = getTemplateByKey(world.templateKey);
     const blueprintPromptBlock = buildWorldBlueprintPromptBlock(world);
@@ -290,10 +350,7 @@ export class WorldService {
   }
 
   async updateAxioms(worldId: string, axioms: string[]) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
 
     const parsed = parseWorldStructurePayload(world.structureJson, world.bindingSupportJson);
     const nextStructure = {
@@ -324,10 +381,7 @@ export class WorldService {
   }
 
   async generateLayer(worldId: string, layerKey: WorldLayerKey, input: LayerGenerateInput) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
     const generated = await buildWorldLayerGeneration({
       provider: input.provider ?? "deepseek",
       model: input.model,
@@ -358,10 +412,7 @@ export class WorldService {
   }
 
   async generateAllLayers(worldId: string, input: LayerGenerateInput) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
 
     const generatedByLayer = WORLD_LAYER_ORDER.reduce((acc, layerKey) => {
       acc[layerKey] = {};
@@ -406,10 +457,7 @@ export class WorldService {
   }
 
   async updateLayer(worldId: string, layerKey: WorldLayerKey, input: LayerUpdateInput) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
 
     const field = LAYER_FIELD_MAP[layerKey][0];
     const states = normalizeLayerStates(world.layerStates);
@@ -429,10 +477,7 @@ export class WorldService {
   }
 
   async confirmLayer(worldId: string, layerKey: WorldLayerKey) {
-    const world = await prisma.world.findUnique({ where: { id: worldId } });
-    if (!world) {
-      throw new Error("World not found.");
-    }
+    const world = await this.getOwnedWorldOrThrow(worldId);
     const states = normalizeLayerStates(world.layerStates);
     states[layerKey] = { key: layerKey, status: "confirmed", updatedAt: nowISO() };
     const allConfirmed = WORLD_LAYER_ORDER.every((key) => states[key].status === "confirmed");
@@ -516,8 +561,10 @@ export class WorldService {
 
   async listLibrary(query: { category?: string; worldType?: string; keyword?: string; limit?: number }) {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+    const scope = this.getOwnedWorldScope();
     return prisma.worldPropertyLibrary.findMany({
       where: {
+        ...(scope.enforce ? { userId: scope.userId } : {}),
         ...(query.category ? { category: query.category } : {}),
         ...(query.worldType ? { worldType: query.worldType } : {}),
         ...(query.keyword
@@ -541,17 +588,32 @@ export class WorldService {
     worldType?: string;
     sourceWorldId?: string;
   }) {
+    const userId = this.requireCurrentUserId();
+    const scope = this.getOwnedWorldScope();
+    const sourceWorldId = input.sourceWorldId?.trim() || null;
+    if (sourceWorldId) {
+      await this.assertOwnedWorldReference(userId, sourceWorldId, "指定的源世界观不存在。");
+    }
     const created = await prisma.worldPropertyLibrary.create({
-      data: input,
+      data: {
+        ...input,
+        userId: scope.enforce ? userId : null,
+        sourceWorldId,
+      },
     });
     this.queueRagUpsert("world_library_item", created.id);
     return created;
   }
 
   async useLibraryItem(itemId: string, input: LibraryUseInput) {
-    const item = await prisma.worldPropertyLibrary.findUnique({ where: { id: itemId } });
+    const scope = this.getOwnedWorldScope();
+    const item = await prisma.worldPropertyLibrary.findFirst({
+      where: scope.enforce
+        ? { id: itemId, userId: scope.userId }
+        : { id: itemId },
+    });
     if (!item) {
-      throw new Error("Library item not found.");
+      throw new AppError("世界素材不存在。", 404);
     }
 
     await prisma.worldPropertyLibrary.update({
@@ -561,9 +623,13 @@ export class WorldService {
     this.queueRagUpsert("world_library_item", itemId);
 
     if (input.worldId && input.targetCollection) {
-      const world = await prisma.world.findUnique({ where: { id: input.worldId } });
+      const world = await prisma.world.findFirst({
+        where: scope.enforce
+          ? { id: input.worldId, userId: scope.userId }
+          : { id: input.worldId },
+      });
       if (!world) {
-        throw new Error("Target world not found.");
+        throw new AppError("世界观不存在。", 404);
       }
       const parsed = parseWorldStructurePayload(world.structureJson, world.bindingSupportJson);
       const baseStructure = parsed.hasStructuredData ? parsed.structure : buildWorldStructureSeedFromSource(world);
@@ -620,9 +686,13 @@ export class WorldService {
     }
 
     if (input.worldId && input.targetField) {
-      const world = await prisma.world.findUnique({ where: { id: input.worldId } });
+      const world = await prisma.world.findFirst({
+        where: scope.enforce
+          ? { id: input.worldId, userId: scope.userId }
+          : { id: input.worldId },
+      });
       if (!world) {
-        throw new Error("Target world not found.");
+        throw new AppError("世界观不存在。", 404);
       }
       const existing = world[input.targetField] ?? "";
       await prisma.world.update({

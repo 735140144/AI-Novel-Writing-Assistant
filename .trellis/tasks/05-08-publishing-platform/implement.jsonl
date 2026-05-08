@@ -1,0 +1,18 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "Cross-package thinking guides are relevant because publishing spans database, backend routes, external API integration, shared types, and frontend workflow."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Publishing data flows across Prisma models, services, routes, shared contracts, and UI state."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "The implementation should reuse existing novel, chapter, ownership, API, query key, and task/status patterns before adding helpers."}
+{"file": ".trellis/spec/server/backend/index.md", "reason": "Backend publishing routes, services, external API client, migrations, and ownership checks are central to the task."}
+{"file": ".trellis/spec/server/backend/directory-structure.md", "reason": "New backend modules should follow project service and route organization."}
+{"file": ".trellis/spec/server/backend/database-guidelines.md", "reason": "Publishing requires new persisted models and migrations for PostgreSQL and SQLite without destructive database commands."}
+{"file": ".trellis/spec/server/backend/error-handling.md", "reason": "External dispatch errors and relogin requirements need consistent API error handling."}
+{"file": ".trellis/spec/server/backend/quality-guidelines.md", "reason": "Backend changes need to follow project quality constraints and avoid brittle fallback logic."}
+{"file": ".trellis/spec/server/backend/publishing-platform-integration.md", "reason": "Publishing platform work must follow the server-owned dispatch, timer format, grouping, status mapping, QR sanitization, and ownership contracts."}
+{"file": ".trellis/spec/client/frontend/index.md", "reason": "The publishing workspace needs new UI inside the client novel workflow."}
+{"file": ".trellis/spec/client/frontend/component-guidelines.md", "reason": "New publishing components should match existing component patterns."}
+{"file": ".trellis/spec/client/frontend/hook-guidelines.md", "reason": "Publishing API calls and server state should follow existing hook/data-fetching conventions."}
+{"file": ".trellis/spec/client/frontend/state-management.md", "reason": "Publishing plan editing and status refresh require clear local vs server state boundaries."}
+{"file": ".trellis/spec/client/frontend/type-safety.md", "reason": "Publishing forms, API responses, and status enums need strong TypeScript contracts."}
+{"file": ".trellis/spec/client/frontend/quality-guidelines.md", "reason": "Frontend implementation should preserve responsive layout, accessible copy, and project quality bar."}
+{"file": ".trellis/spec/shared/frontend/index.md", "reason": "Shared publishing types may be added or exported for client/server contracts."}
+{"file": ".trellis/spec/shared/frontend/type-safety.md", "reason": "Shared contracts should keep status and schedule fields type-safe."}
+{"file": ".trellis/tasks/05-08-publishing-platform/research/fanqie-dispatch-api.md", "reason": "External Fanqie dispatch API behavior, status enums, relogin flow, and timer format drive implementation."}
