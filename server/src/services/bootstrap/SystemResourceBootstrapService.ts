@@ -715,17 +715,15 @@ export async function assignLegacyCreativeResourcesToUser(userId: string): Promi
 export async function ensureAdminCreativeResources(userId: string): Promise<void> {
   await assignLegacyCreativeResourcesToUser(userId);
 
-  const [novelCount, genreCount, storyModeCount] = await Promise.all([
-    prisma.novel.count({ where: { userId } }),
-    prisma.novelGenre.count({ where: { userId } }),
-    prisma.novelStoryMode.count({ where: { userId } }),
-  ]);
-
-  if (novelCount > 0 && genreCount > 0 && storyModeCount > 0) {
-    return;
-  }
-
-  await ensureSystemResourceStarterData({ userId });
+  await prisma.$transaction(async (tx) => {
+    for (const root of BUILT_IN_GENRE_SEEDS) {
+      await seedGenreNode(tx, root, null, userId, "missing_only");
+    }
+    for (const root of BUILT_IN_STORY_MODE_SEEDS) {
+      await seedStoryModeNode(tx, root, null, userId, "missing_only");
+    }
+    await seedStarterStyleProfiles(tx, "missing_only");
+  });
 }
 
 export function hasSystemResourceBootstrapChanges(report: SystemResourceBootstrapReport): boolean {

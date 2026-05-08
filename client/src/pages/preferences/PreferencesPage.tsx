@@ -1,7 +1,7 @@
 import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import AutoDirectorSettingsSection from "@/pages/settings/AutoDirectorSettingsSection";
 import SettingsActionResult from "@/pages/settings/SettingsActionResult";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function PreferencesPage() {
   const [actionResult, setActionResult] = useState("");

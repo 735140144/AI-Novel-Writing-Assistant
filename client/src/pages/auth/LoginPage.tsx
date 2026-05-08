@@ -4,8 +4,8 @@ import { useMutation } from "@tanstack/react-query";
 import { loginWithEmail } from "@/api/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import AuthCardShell from "./AuthCardShell";
 import { useAuthStore } from "@/store/authStore";
+import AuthCardShell from "./AuthCardShell";
 
 export default function LoginPage() {
   const navigate = useNavigate();
