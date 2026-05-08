@@ -34,6 +34,9 @@ export const queryKeys = {
     snapshots: (id: string) => ["novels", "snapshots", id] as const,
     publishingWorkspace: (id: string) => ["novels", "publishing", "workspace", id] as const,
   },
+  publishingCredentials: ["publishing", "credentials"] as const,
+  publishingWorks: ["publishing", "works"] as const,
+  publishingWorkDetail: (bindingId: string) => ["publishing", "works", bindingId] as const,
   worlds: {
     all: ["worlds"] as const,
     detail: (id: string) => ["worlds", "detail", id] as const,

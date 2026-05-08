@@ -8,79 +8,111 @@ const navigation = readFileSync("client/src/pages/novels/novelWorkspaceNavigatio
 const novelList = readFileSync("client/src/pages/novels/NovelList.tsx", "utf8");
 const desktopView = readFileSync("client/src/pages/novels/components/NovelEditView.tsx", "utf8");
 const mobileView = readFileSync("client/src/pages/novels/mobile/MobileNovelEditView.tsx", "utf8");
-const publishingTab = readFileSync("client/src/pages/novels/components/PublishingWorkspaceTab.tsx", "utf8");
-const publishingHook = readFileSync("client/src/pages/novels/hooks/useNovelPublishingWorkspace.ts", "utf8");
 const sidebar = readFileSync("client/src/components/layout/Sidebar.tsx", "utf8");
 const mobileNavigation = readFileSync("client/src/components/layout/mobile/mobileSiteNavigation.ts", "utf8");
 const router = readFileSync("client/src/router/index.tsx", "utf8");
-const publishingPagePath = "client/src/pages/publishing/PublishingPlatformPage.tsx";
-const publishingPage = existsSync(publishingPagePath) ? readFileSync(publishingPagePath, "utf8") : "";
+const publishingIndexPagePath = "client/src/pages/publishing/PublishingPlatformPage.tsx";
+const publishingAccountsPagePath = "client/src/pages/publishing/PublishingAccountsPage.tsx";
+const publishingWorksPagePath = "client/src/pages/publishing/PublishingWorksPage.tsx";
+const publishingDetailPagePath = "client/src/pages/publishing/PublishingWorkDetailPage.tsx";
+const publishingIndexPage = existsSync(publishingIndexPagePath) ? readFileSync(publishingIndexPagePath, "utf8") : "";
+const publishingAccountsPage = existsSync(publishingAccountsPagePath) ? readFileSync(publishingAccountsPagePath, "utf8") : "";
+const publishingWorksPage = existsSync(publishingWorksPagePath) ? readFileSync(publishingWorksPagePath, "utf8") : "";
+const publishingDetailPage = existsSync(publishingDetailPagePath) ? readFileSync(publishingDetailPagePath, "utf8") : "";
 
-test("publishing workspace uses server API routes only", () => {
+test("publishing API stays server-mediated and exposes split module endpoints", () => {
   assert.doesNotMatch(novelApi, /dispatch\.lucky37\.cn/);
-  assert.doesNotMatch(publishingTab, /qrPageUrl|qrImageUrl/);
-  assert.match(novelApi, /\/novels\/\$\{novelId\}\/publishing\/workspace/);
   assert.match(novelApi, /\/novels\/publishing\/credentials/);
-  assert.match(novelApi, /\/novels\/\$\{novelId\}\/publishing\/plans\/\$\{planId\}\/submit/);
-  assert.match(novelApi, /\/novels\/\$\{novelId\}\/publishing\/jobs\/\$\{jobId\}\/refresh/);
+  assert.match(novelApi, /\/novels\/publishing\/works/);
+  assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}/);
+  assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/progress\/sync/);
+  assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/plans/);
+  assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/plans\/\$\{planId\}\/submit/);
 });
 
-test("publishing is a novel workspace flow step outside director locks", () => {
+test("publishing remains a novel workspace flow step but primary entry is menu-level", () => {
   assert.match(navigation, /\{ key: "pipeline", label: "质量修复" \},\n\s*\{ key: "publishing", label: "发布" \}/);
   assert.match(navigation, /if \(tab === "publishing"\) return null/);
-});
-
-test("publishing workspace is reachable on desktop and mobile", () => {
-  assert.match(queryKeys, /publishingWorkspace: \(id: string\) => \["novels", "publishing", "workspace", id\] as const/);
-  assert.match(desktopView, /case "publishing":\n\s*return <PublishingWorkspaceTab \{\.\.\.publishingTab\} \/>/);
-  assert.match(mobileView, /case "publishing":\n\s*return <PublishingWorkspaceTab \{\.\.\.publishingTab\} \/>/);
-});
-
-test("publishing platform is not embedded in novel cards or edit header", () => {
   assert.doesNotMatch(novelList, /edit\?stage=publishing/);
-  assert.doesNotMatch(novelList, /import \{[^}]*Send[^}]*\} from "lucide-react"/);
-  assert.doesNotMatch(
-    novelList,
-    /<Link[\s\S]*?to=\{`\/novels\/\$\{novel\.id\}\/edit\?stage=publishing`\}[\s\S]*?发布平台[\s\S]*?<\/Link>/,
-  );
-  assert.doesNotMatch(desktopView, /import \{[^}]*Send[^}]*\} from "lucide-react"/);
   assert.doesNotMatch(desktopView, /onClick=\{\(\) => props\.onActiveTabChange\("publishing"\)\}[\s\S]{0,240}发布平台/);
+  assert.doesNotMatch(mobileView, /onClick=\{\(\) => props\.onActiveTabChange\("publishing"\)\}[\s\S]{0,240}发布平台/);
 });
 
-test("publishing platform has a menu-level route on desktop and mobile", () => {
+test("publishing module is split into accounts, works, and work detail routes", () => {
   assert.match(router, /const PublishingPlatformPage = lazy\(\(\) => import\("@\/pages\/publishing\/PublishingPlatformPage"\)\)/);
+  assert.match(router, /const PublishingAccountsPage = lazy\(\(\) => import\("@\/pages\/publishing\/PublishingAccountsPage"\)\)/);
+  assert.match(router, /const PublishingWorksPage = lazy\(\(\) => import\("@\/pages\/publishing\/PublishingWorksPage"\)\)/);
+  assert.match(router, /const PublishingWorkDetailPage = lazy\(\(\) => import\("@\/pages\/publishing\/PublishingWorkDetailPage"\)\)/);
   assert.match(router, /\{ path: "publishing", element: <PublishingPlatformPage \/> \}/);
-  assert.match(sidebar, /\{ to: "\/publishing", label: "发布平台", icon: [A-Za-z0-9_]+ \}/);
-  assert.match(mobileNavigation, /key: "publishing"[\s\S]{0,120}title: "发布平台"[\s\S]{0,80}group: "creation"/);
-  assert.match(mobileNavigation, /\{ key: "publishing", label: "发布平台", to: "\/publishing", group: "creation" \}/);
+  assert.match(router, /\{ path: "publishing\/accounts", element: <PublishingAccountsPage \/> \}/);
+  assert.match(router, /\{ path: "publishing\/works", element: <PublishingWorksPage \/> \}/);
+  assert.match(router, /\{ path: "publishing\/works\/:bindingId", element: <PublishingWorkDetailPage \/> \}/);
 });
 
-test("standalone publishing page selects a novel and reuses publishing workspace tab", () => {
-  assert.ok(existsSync(publishingPagePath));
-  assert.match(publishingPage, /getNovelList/);
-  assert.match(publishingPage, /queryKeys\.novels\.list\(1, 100\)/);
-  assert.match(publishingPage, /useNovelPublishingWorkspace\(\{/);
-  assert.match(publishingPage, /<PublishingWorkspaceTab \{\.\.\.publishingTab\} \/>/);
-  assert.match(publishingPage, /<Link to="\/novels\/create\?mode=director">AI 自动导演开书<\/Link>/);
-  assert.match(publishingPage, /已有章节：\{selectedNovel\._count\.chapters\}/);
-  assert.match(publishingPage, /预期章节：\{selectedNovel\.estimatedChapterCount \?\? "-"\}/);
-  assert.doesNotMatch(publishingPage, /max-h-\[520px\] space-y-2 overflow-auto pr-1/);
+test("publishing navigation is menu-level on desktop and mobile", () => {
+  assert.match(sidebar, /\{ to: "\/publishing", label: "发布", icon: [A-Za-z0-9_]+ \}/);
+  assert.match(sidebar, /\{ to: "\/publishing\/accounts", label: "账号管理", icon: [A-Za-z0-9_]+ \}/);
+  assert.match(sidebar, /\{ to: "\/publishing\/works", label: "作品列表", icon: [A-Za-z0-9_]+ \}/);
+  assert.match(mobileNavigation, /key: "publishing"[\s\S]{0,120}title: "发布"[\s\S]{0,120}group: "creation"/);
+  assert.match(mobileNavigation, /\{ key: "publishing-accounts", label: "账号管理", to: "\/publishing\/accounts", group: "creation" \}/);
+  assert.match(mobileNavigation, /\{ key: "publishing-works", label: "作品列表", to: "\/publishing\/works", group: "creation" \}/);
 });
 
-test("publishing workspace keeps local known-book dropdown instead of exposing only raw platform id", () => {
-  assert.match(publishingTab, /已维护番茄书籍/);
-  assert.match(publishingTab, /onSelectedKnownBookKeyChange/);
-  assert.match(publishingTab, /优先通过上方书籍下拉自动带出/);
-  assert.match(publishingTab, /htmlFor="publishing-book-choice"/);
-  assert.doesNotMatch(publishingTab, /平台书籍 ID/);
+test("publishing landing page redirects users into the split module", () => {
+  assert.ok(existsSync(publishingIndexPagePath));
+  assert.match(publishingIndexPage, /Navigate/);
+  assert.match(publishingIndexPage, /to="\/publishing\/works"/);
 });
 
-test("publishing workspace hides QR once the credential is ready", () => {
-  assert.match(publishingTab, /latestChallenge && selectedCredential\?\.status !== "ready"/);
+test("publishing accounts page owns credential management and QR login UX", () => {
+  assert.ok(existsSync(publishingAccountsPagePath));
+  assert.match(publishingAccountsPage, /getPublishingAccounts/);
+  assert.match(publishingAccountsPage, /validatePublishingCredential/);
+  assert.match(publishingAccountsPage, /绑定番茄账号/);
+  assert.match(publishingAccountsPage, /创建扫码账号/);
+  assert.match(publishingAccountsPage, /刷新/);
+  assert.match(publishingAccountsPage, /扫码登录/);
+  assert.doesNotMatch(publishingAccountsPage, /发布计划/);
 });
 
-test("publishing workspace resets stale local book fields when the user changes novels or accounts", () => {
-  assert.match(publishingHook, /const nextSignature = \[\s*novelId,/);
-  assert.match(publishingHook, /setBookId\(""\);\s*setBookTitle\(""\);\s*setSelectedKnownBookKey\(""\);/);
-  assert.match(publishingHook, /syncSelectedCredential\(selectedBook\.credentialId, \{ preserveSelectedBook: true \}\)/);
+test("publishing works page uses table/list layout with binding-row granularity", () => {
+  assert.ok(existsSync(publishingWorksPagePath));
+  assert.match(publishingWorksPage, /getPublishingWorks/);
+  assert.match(publishingWorksPage, /getPublishingAccounts/);
+  assert.match(publishingWorksPage, /getNovelList/);
+  assert.match(publishingWorksPage, /createNovelPlatformBinding/);
+  assert.match(publishingWorksPage, /添加作品/);
+  assert.match(publishingWorksPage, /绑定作品/);
+  assert.match(publishingWorksPage, /选择本地已维护书籍/);
+  assert.match(publishingWorksPage, /作品列表/);
+  assert.match(publishingWorksPage, /书名/);
+  assert.match(publishingWorksPage, /进度/);
+  assert.match(publishingWorksPage, /发布平台/);
+  assert.match(publishingWorksPage, /发布平台笔名/);
+  assert.match(publishingWorksPage, /发布书名/);
+  assert.match(publishingWorksPage, /账号状态/);
+  assert.match(publishingWorksPage, /最近同步时间/);
+  assert.match(publishingWorksPage, /发布详情/);
+  assert.doesNotMatch(publishingWorksPage, /rounded-xl border border-border\/70 bg-background p-4/);
+});
+
+test("publishing work detail page requires remote sync before first plan generation", () => {
+  assert.ok(existsSync(publishingDetailPagePath));
+  assert.match(publishingDetailPage, /getPublishingWorkDetail/);
+  assert.match(publishingDetailPage, /syncPublishingBindingProgress/);
+  assert.match(publishingDetailPage, /generatePublishingPlan/);
+  assert.match(publishingDetailPage, /submitPublishingPlan/);
+  assert.match(publishingDetailPage, /refreshPublishingJob/);
+  assert.match(publishingDetailPage, /同步远端进度/);
+  assert.match(publishingDetailPage, /首次生成发布时间表前/);
+  assert.match(publishingDetailPage, /生成发布时间表/);
+  assert.match(publishingDetailPage, /参与发布章节数量/);
+  assert.match(publishingDetailPage, /开始发布/);
+  assert.match(publishingDetailPage, /发布详情/);
+});
+
+test("publishing query keys follow split accounts-works-detail structure", () => {
+  assert.match(queryKeys, /publishingCredentials: \["publishing", "credentials"\] as const/);
+  assert.match(queryKeys, /publishingWorks: \["publishing", "works"\] as const/);
+  assert.match(queryKeys, /publishingWorkDetail: \(bindingId: string\) => \["publishing", "works", bindingId\] as const/);
 });

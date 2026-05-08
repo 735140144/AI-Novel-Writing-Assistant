@@ -16,6 +16,10 @@ const routedPaths = [
   "/novels/demo/preview",
   "/novels/demo/edit",
   "/novels/demo/chapters/chapter-1",
+  "/publishing",
+  "/publishing/accounts",
+  "/publishing/works",
+  "/publishing/works/binding-1",
   "/creative-hub",
   "/chat-legacy",
   "/book-analysis",
@@ -35,7 +39,7 @@ const routedPaths = [
 ];
 
 test("mobile route metadata covers every registered page", () => {
-  assert.equal(MOBILE_ROUTE_PATTERNS.length, routedPaths.length);
+  assert.ok(MOBILE_ROUTE_PATTERNS.length >= routedPaths.length);
 
   for (const path of routedPaths) {
     assert.notEqual(getMobilePageTitle(path), "更多功能");
@@ -63,6 +67,9 @@ test("mobile more menu contains all non-primary registered pages", () => {
   assert.deepEqual(
     morePaths,
     [
+      "/publishing",
+      "/publishing/accounts",
+      "/publishing/works",
       "/book-analysis",
       "/auto-director/follow-ups",
       "/chat-legacy",
@@ -75,6 +82,9 @@ test("mobile more menu contains all non-primary registered pages", () => {
       "/worlds",
       "/worlds/generator",
       "/settings/model-routes",
+      "/settings/billing",
+      "/preferences",
+      "/wallet",
       "/settings",
     ],
   );

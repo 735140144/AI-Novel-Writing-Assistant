@@ -83,12 +83,30 @@ export interface NovelPlatformBinding {
   credentialId: string;
   credentialLabel: string;
   credentialStatus: PublishingCredentialStatus;
+  credentialAccountDisplayName?: string | null;
   bookId: string;
   bookTitle: string;
   status: NovelPlatformBindingStatus;
   lastValidatedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface PublishingProgressChapterRow {
+  source: "chapter" | "draft" | string;
+  order?: number | null;
+  title: string;
+  chapterName: string;
+  itemId?: string | null;
+}
+
+export interface PublishingBindingRemoteProgress {
+  bookId: string;
+  bookTitle: string;
+  publishedChapters: PublishingProgressChapterRow[];
+  draftChapters: PublishingProgressChapterRow[];
+  effectiveDraftChapters: PublishingProgressChapterRow[];
+  syncedAt: string;
 }
 
 export interface PublishingKnownBookOption {
@@ -185,6 +203,53 @@ export interface PublishingWorkspaceResponse {
   recentJobs: PublishDispatchJob[];
 }
 
+export interface PublishingAccountWorkspaceResponse {
+  credentials: PublishingPlatformCredential[];
+  knownBooks: PublishingKnownBookOption[];
+}
+
+export interface PublishingWorkListItem {
+  bindingId: string;
+  novelId: string;
+  novelTitle: string;
+  novelDescription?: string | null;
+  completedChapterCount: number;
+  publishedChapterCount: number;
+  estimatedChapterCount?: number | null;
+  platform: PublishingPlatform;
+  credentialId: string;
+  credentialLabel: string;
+  credentialStatus: PublishingCredentialStatus;
+  credentialAccountDisplayName?: string | null;
+  bookId: string;
+  bookTitle: string;
+  bindingStatus: NovelPlatformBindingStatus;
+  lastSyncedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublishingWorksResponse {
+  items: PublishingWorkListItem[];
+}
+
+export interface PublishingWorkDetailResponse {
+  binding: NovelPlatformBinding;
+  novel: {
+    id: string;
+    title: string;
+    description?: string | null;
+    estimatedChapterCount?: number | null;
+    completedChapterCount: number;
+    chapterCount: number;
+  };
+  credentials: PublishingPlatformCredential[];
+  knownBooks: PublishingKnownBookOption[];
+  activePlan: PublishPlan | null;
+  recentJobs: PublishDispatchJob[];
+  remoteProgress: PublishingBindingRemoteProgress | null;
+}
+
 export interface CreatePublishingCredentialRequest {
   platform?: PublishingPlatform;
   label: string;
@@ -200,6 +265,7 @@ export interface UpsertNovelPlatformBindingRequest {
 
 export interface GeneratePublishPlanRequest {
   bindingId?: string;
+  chapterCount?: number;
   instruction: string;
   mode?: PublishMode;
   startChapterOrder?: number;
@@ -215,3 +281,5 @@ export interface SubmitPublishPlanRequest {
   useAi?: boolean;
   dailyWordLimit?: number;
 }
+
+export interface SyncPublishingBindingProgressRequest {}

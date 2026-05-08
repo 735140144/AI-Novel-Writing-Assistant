@@ -18,6 +18,9 @@ const NovelPreview = lazy(() => import("@/pages/novels/NovelPreview"));
 const NovelEdit = lazy(() => import("@/pages/novels/NovelEdit"));
 const NovelChapterEdit = lazy(() => import("@/pages/novels/NovelChapterEdit"));
 const PublishingPlatformPage = lazy(() => import("@/pages/publishing/PublishingPlatformPage"));
+const PublishingAccountsPage = lazy(() => import("@/pages/publishing/PublishingAccountsPage"));
+const PublishingWorksPage = lazy(() => import("@/pages/publishing/PublishingWorksPage"));
+const PublishingWorkDetailPage = lazy(() => import("@/pages/publishing/PublishingWorkDetailPage"));
 const CreativeHubPage = lazy(() => import("@/pages/creativeHub/CreativeHubPage"));
 const ChatPage = lazy(() => import("@/pages/chat/ChatPage"));
 const BookAnalysisPage = lazy(() => import("@/pages/bookAnalysis/BookAnalysisPage"));
@@ -57,6 +60,9 @@ const routes: RouteObject[] = [
           { path: "novels/:id/edit", element: <NovelEdit /> },
           { path: "novels/:id/chapters/:chapterId", element: <NovelChapterEdit /> },
           { path: "publishing", element: <PublishingPlatformPage /> },
+          { path: "publishing/accounts", element: <PublishingAccountsPage /> },
+          { path: "publishing/works", element: <PublishingWorksPage /> },
+          { path: "publishing/works/:bindingId", element: <PublishingWorkDetailPage /> },
           { path: "creative-hub", element: <CreativeHubPage /> },
           { path: "chat-legacy", element: <ChatPage /> },
           { path: "chat", element: <Navigate to="/creative-hub" replace /> },

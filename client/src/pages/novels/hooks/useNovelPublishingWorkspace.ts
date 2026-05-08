@@ -9,11 +9,11 @@ import type {
 import {
   bootstrapPublishingCredentialLogin,
   createPublishingCredential,
-  generatePublishPlan,
+  createNovelPlatformBinding,
+  generatePublishingPlan,
   getPublishingWorkspace,
-  refreshPublishJob,
-  submitPublishPlan,
-  upsertNovelPlatformBinding,
+  refreshPublishingJob,
+  submitPublishingPlan,
   validatePublishingCredential,
 } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
@@ -119,7 +119,7 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
   });
 
   const saveBindingMutation = useMutation({
-    mutationFn: () => upsertNovelPlatformBinding(novelId, {
+    mutationFn: () => createNovelPlatformBinding(novelId, {
       platform: "fanqie",
       credentialId,
       bookId,
@@ -135,14 +135,20 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
   });
 
   const generatePlanMutation = useMutation({
-    mutationFn: () => generatePublishPlan(novelId, {
+    mutationFn: () => {
+      const bindingId = workspaceQuery.data?.data?.binding?.id;
+      if (!bindingId) {
+        throw new Error("请先绑定番茄书籍。");
+      }
+      return generatePublishingPlan(bindingId, {
       bindingId: workspaceQuery.data?.data?.binding?.id,
       instruction: scheduleInstruction,
       mode,
       provider: llm.provider,
       model: llm.model,
       temperature: llm.temperature,
-    }),
+      });
+    },
     onSuccess: async () => {
       setMessage("发布时间表可用于提交章节。");
       await invalidateWorkspace();
@@ -158,7 +164,11 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
       if (!planId) {
         throw new Error("请先生成发布时间表。");
       }
-      return submitPublishPlan(novelId, planId, { mode: submitMode });
+      const bindingId = workspaceQuery.data?.data?.binding?.id;
+      if (!bindingId) {
+        throw new Error("请先绑定番茄书籍。");
+      }
+      return submitPublishingPlan(bindingId, planId, { mode: submitMode });
     },
     onSuccess: async (_response, submitMode) => {
       setMessage(submitMode === "publish" ? "章节正在提交发布平台。" : "章节正在提交到草稿箱。");
@@ -170,7 +180,13 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
   });
 
   const refreshJobMutation = useMutation({
-    mutationFn: (jobId: string) => refreshPublishJob(novelId, jobId),
+    mutationFn: (jobId: string) => {
+      const bindingId = workspaceQuery.data?.data?.binding?.id;
+      if (!bindingId) {
+        throw new Error("请先绑定番茄书籍。");
+      }
+      return refreshPublishingJob(bindingId, jobId);
+    },
     onSuccess: async () => {
       setMessage("发布任务状态刷新完成。");
       await invalidateWorkspace();

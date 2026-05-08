@@ -18,6 +18,7 @@ const {
   mapPublishingCredential,
   mapPublishingKnownBookOption,
 } = require("../dist/services/publishing/publishingMappers.js");
+const { getEffectiveRemoteProgressRows } = require("../dist/services/publishing/publishingRemoteProgress.js");
 const { getRegisteredPromptAsset } = require("../dist/prompting/registry.js");
 
 test("publishing schedule assigns two chapters to each daily planned time", () => {
@@ -278,6 +279,56 @@ test("publishing known-book option key is stable for dropdown selection and dedu
     sourceNovelTitle: "测试小说",
     lastUsedAt: "2026-05-08T10:00:00.000Z",
   });
+});
+
+test("publishing remote progress ignores placeholder drafts and keeps published rows", () => {
+  const progress = getEffectiveRemoteProgressRows({
+    publishedChapters: [
+      {
+        source: "chapter",
+        order: 1,
+        title: "Arrival",
+        chapterName: "Arrival",
+        itemId: "published-1",
+      },
+    ],
+    draftChapters: [
+      {
+        source: "draft",
+        order: 2,
+        title: "Departure",
+        chapterName: "Departure",
+        itemId: "draft-2",
+      },
+      {
+        source: "draft",
+        order: 3,
+        title: "",
+        chapterName: "",
+        itemId: "draft-3",
+      },
+    ],
+    effectiveDraftChapters: [
+      {
+        source: "draft",
+        order: 2,
+        title: "Departure",
+        chapterName: "Departure",
+        itemId: "draft-2",
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    progress.publishedOrders,
+    new Set([1]),
+  );
+  assert.deepEqual(
+    progress.effectiveDraftOrders,
+    new Set([2]),
+  );
+  assert.equal(progress.publishedCount, 1);
+  assert.equal(progress.effectiveDraftCount, 1);
 });
 
 test("publishing schedule parsing prompt is registered and structured", () => {

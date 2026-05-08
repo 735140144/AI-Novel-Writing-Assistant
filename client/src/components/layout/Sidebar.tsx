@@ -15,6 +15,7 @@ import {
   SquarePen,
   Tags,
   UploadCloud,
+  Link2,
   UsersRound,
   Wallet,
   WandSparkles,
@@ -49,7 +50,9 @@ const navGroups: NavGroup[] = [
     items: [
       { to: "/", label: "首页", icon: House },
       { to: "/novels", label: "小说列表", icon: BookOpenText },
-      { to: "/publishing", label: "发布平台", icon: UploadCloud },
+      { to: "/publishing", label: "发布", icon: UploadCloud },
+      { to: "/publishing/accounts", label: "账号管理", icon: UsersRound },
+      { to: "/publishing/works", label: "作品列表", icon: Link2 },
       { to: "/creative-hub", label: "创作中枢", icon: LayoutDashboard },
       { to: "/book-analysis", label: "拆书", icon: ScanSearch },
       { to: "/tasks", label: "任务中心", icon: ListTodo },

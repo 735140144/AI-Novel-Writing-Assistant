@@ -2,8 +2,10 @@ import { PublishItemStatus, PublishingPlatform } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { getRequestContext } from "../../runtime/requestContext";
+import type { PublishingWorkListItem } from "@ai-novel/shared/types/publishing";
 import { buildKnownBookOptionsFromWorkspace } from "./publishingKnownBooks";
 import { parseDate, resolvePlanStatusFromItemStatuses, type PrismaLike } from "./publishingCore";
+import { parsePublishingRemoteProgressSnapshot } from "./publishingRemoteProgress";
 
 export function requireCurrentUserId(): string {
   const userId = getRequestContext()?.userId?.trim();
@@ -85,6 +87,52 @@ export async function getActiveBinding(novelId: string, userId: string, db: Pris
     throw new AppError("请先绑定番茄书籍。", 400);
   }
   return binding;
+}
+
+export async function listOwnedBindings(userId: string) {
+  return prisma.novelPlatformBinding.findMany({
+    where: {
+      credential: {
+        userId,
+      },
+    },
+    include: {
+      credential: {
+        select: {
+          id: true,
+          label: true,
+          status: true,
+          accountDisplayName: true,
+        },
+      },
+      novel: {
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          estimatedChapterCount: true,
+          chapters: {
+            select: {
+              id: true,
+              generationState: true,
+              chapterStatus: true,
+            },
+          },
+        },
+      },
+      publishPlanItems: {
+        where: {
+          status: {
+            in: [PublishItemStatus.published],
+          },
+        },
+        select: {
+          chapterId: true,
+        },
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+  });
 }
 
 export async function listVolumeTitlesByChapterOrder(novelId: string): Promise<Map<number, string>> {
@@ -232,6 +280,43 @@ export async function resolveScheduleContinuation(input: {
     occupiedCount,
     occupiedPlannedTime: latestPlannedTime ?? lastOccupiedTime,
   };
+}
+
+export function buildPublishingWorkListItems(rows: Awaited<ReturnType<typeof listOwnedBindings>>): PublishingWorkListItem[] {
+  return rows.map((row) => {
+    const remoteProgress = parsePublishingRemoteProgressSnapshot(row.remoteProgressSnapshotJson);
+    const completedChapterCount = row.novel.chapters.filter((chapter) =>
+      chapter.chapterStatus === "completed"
+      || chapter.generationState === "approved"
+      || chapter.generationState === "published").length;
+    const publishedChapterCount = Math.max(
+      new Set(row.publishPlanItems.map((item) => item.chapterId)).size,
+      remoteProgress?.publishedChapters.length ?? 0,
+    );
+
+    return {
+      bindingId: row.id,
+      novelId: row.novel.id,
+      novelTitle: row.novel.title,
+      novelDescription: row.novel.description,
+      completedChapterCount,
+      publishedChapterCount,
+      estimatedChapterCount: row.novel.estimatedChapterCount,
+      platform: row.platform,
+      credentialId: row.credentialId,
+      credentialLabel: row.credential.label,
+      credentialStatus: row.credential.status,
+      credentialAccountDisplayName: row.credential.accountDisplayName ?? null,
+      bookId: row.bookId,
+      bookTitle: row.bookTitle,
+      bindingStatus: row.status,
+      lastSyncedAt: remoteProgress?.syncedAt
+        ?? parseDate(row.lastValidatedAt?.toISOString() ?? undefined)?.toISOString()
+        ?? null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  });
 }
 
 export async function upsertCredentialFromDispatch(input: {

@@ -155,13 +155,13 @@ async function runScenario() {
       assert.equal(credentialListBResponse.status, 200);
       const credentialListAPayload = await credentialListAResponse.json();
       const credentialListBPayload = await credentialListBResponse.json();
-      assert.deepEqual(credentialListAPayload.data.map((credential) => credential.credentialUuid), [`credential-a-${timestamp}`]);
-      assert.deepEqual(credentialListBPayload.data.map((credential) => credential.credentialUuid), [`credential-b-${timestamp}`]);
+      assert.deepEqual(credentialListAPayload.data.credentials.map((credential) => credential.credentialUuid), [`credential-a-${timestamp}`]);
+      assert.deepEqual(credentialListBPayload.data.credentials.map((credential) => credential.credentialUuid), [`credential-b-${timestamp}`]);
 
       const foreignCredentialBindingResponse = await fetch(
-        `http://127.0.0.1:${port}/api/novels/${novelBId}/publishing/binding`,
+        `http://127.0.0.1:${port}/api/novels/${novelBId}/publishing/bindings`,
         {
-          method: "PUT",
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             Cookie: cookieB,
@@ -174,6 +174,104 @@ async function runScenario() {
         },
       );
       assert.equal(foreignCredentialBindingResponse.status, 404);
+
+      const createOwnBindingResponse = await fetch(
+        `http://127.0.0.1:${port}/api/novels/${novelAId}/publishing/bindings`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookieA,
+          },
+          body: JSON.stringify({
+            credentialId: credentialAId,
+            bookId: `book-a-${timestamp}`,
+            bookTitle: `用户A番茄书-${timestamp}`,
+          }),
+        },
+      );
+      assert.equal(createOwnBindingResponse.status, 201);
+      const createOwnBindingPayload = await createOwnBindingResponse.json();
+      const bindingAId = createOwnBindingPayload.data.id;
+      assert.ok(bindingAId);
+
+      const createPublishingChapterResponse = await fetch(`http://127.0.0.1:${port}/api/novels/${novelAId}/chapters`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Cookie: cookieA,
+        },
+        body: JSON.stringify({
+          title: `发布章节-${timestamp}`,
+          order: 1,
+          content: "这是用于发布测试的章节内容。",
+        }),
+      });
+      assert.equal(createPublishingChapterResponse.status, 201);
+      const createPublishingChapterPayload = await createPublishingChapterResponse.json();
+      await prisma.chapter.update({
+        where: { id: createPublishingChapterPayload.data.id },
+        data: {
+          chapterStatus: "completed",
+        },
+      });
+
+      const publishingWorksAResponse = await fetch(`http://127.0.0.1:${port}/api/novels/publishing/works`, {
+        headers: { Cookie: cookieA },
+      });
+      const publishingWorksBResponse = await fetch(`http://127.0.0.1:${port}/api/novels/publishing/works`, {
+        headers: { Cookie: cookieB },
+      });
+      assert.equal(publishingWorksAResponse.status, 200);
+      assert.equal(publishingWorksBResponse.status, 200);
+      const publishingWorksAPayload = await publishingWorksAResponse.json();
+      const publishingWorksBPayload = await publishingWorksBResponse.json();
+      assert.equal(publishingWorksAPayload.data.items.length, 1);
+      assert.equal(publishingWorksBPayload.data.items.length, 0);
+      assert.equal(publishingWorksAPayload.data.items[0].bindingId, bindingAId);
+
+      const foreignPublishingWorkDetailResponse = await fetch(
+        `http://127.0.0.1:${port}/api/novels/publishing/works/${bindingAId}`,
+        {
+          headers: { Cookie: cookieB },
+        },
+      );
+      assert.equal(foreignPublishingWorkDetailResponse.status, 404);
+
+      const foreignPublishingProgressSyncResponse = await fetch(
+        `http://127.0.0.1:${port}/api/novels/publishing/works/${bindingAId}/progress/sync`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookieB,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+      assert.equal(foreignPublishingProgressSyncResponse.status, 404);
+
+      const generatePlanWithoutSyncResponse = await fetch(
+        `http://127.0.0.1:${port}/api/novels/publishing/works/${bindingAId}/plans`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Cookie: cookieA,
+          },
+          body: JSON.stringify({
+            instruction: "每日 08:00 发布 1 章节",
+            chapterCount: 1,
+            mode: "draft",
+          }),
+        },
+      );
+      assert.equal(generatePlanWithoutSyncResponse.status, 400);
+      const generatePlanWithoutSyncPayload = await generatePlanWithoutSyncResponse.json();
+      assert.match(
+        `${generatePlanWithoutSyncPayload.message ?? ""} ${generatePlanWithoutSyncPayload.error ?? ""}`,
+        /同步远端进度/,
+      );
 
       const listAResponse = await fetch(`http://127.0.0.1:${port}/api/novels`, {
         headers: { Cookie: cookieA },
@@ -229,7 +327,7 @@ async function runScenario() {
         },
         body: JSON.stringify({
           title: `用户A章节-${timestamp}`,
-          order: 1,
+          order: 2,
           content: "这是用户A的私有章节内容。",
         }),
       });

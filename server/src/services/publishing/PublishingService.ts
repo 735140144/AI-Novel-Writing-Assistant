@@ -1,6 +1,8 @@
 import type {
   GeneratePublishPlanRequest,
   PublishMode,
+  PublishingBindingRemoteProgress,
+  PublishingWorkDetailResponse,
   SubmitPublishPlanRequest,
   UpsertNovelPlatformBindingRequest,
 } from "@ai-novel/shared/types/publishing";
@@ -26,17 +28,24 @@ import {
 } from "./publishingCore";
 import { parseScheduleInstruction } from "./publishingPlanGeneration";
 import {
+  buildPublishingWorkListItems,
   ensureNovel,
   getActiveBinding,
   getOwnedBinding,
   getOwnedCredential,
   listKnownBooks,
+  listOwnedBindings,
   listVolumeTitlesByChapterOrder,
   requireCurrentUserId,
   resolveScheduleContinuation,
   updatePlanStatusFromItems,
   upsertCredentialFromDispatch,
 } from "./publishingQueries";
+import {
+  createPublishingRemoteProgressSnapshot,
+  getEffectiveRemoteProgressRows,
+  parsePublishingRemoteProgressSnapshot,
+} from "./publishingRemoteProgress";
 import {
   buildChapterPublishScheduleFromOffset,
   continueScheduleAfterTime,
@@ -57,11 +66,25 @@ export class PublishingService {
 
   async listCredentials() {
     const userId = requireCurrentUserId();
-    const rows = await prisma.publishingPlatformCredential.findMany({
-      where: { userId },
-      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
-    });
-    return rows.map(mapPublishingCredential);
+    const [rows, knownBooks] = await Promise.all([
+      prisma.publishingPlatformCredential.findMany({
+        where: { userId },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      }),
+      listKnownBooks(userId),
+    ]);
+    return {
+      credentials: rows.map(mapPublishingCredential),
+      knownBooks,
+    };
+  }
+
+  async listWorks() {
+    const userId = requireCurrentUserId();
+    const rows = await listOwnedBindings(userId);
+    return {
+      items: buildPublishingWorkListItems(rows),
+    };
   }
 
   async createCredential(input: {
@@ -212,38 +235,235 @@ export class PublishingService {
       throw new AppError("请填写平台书籍 ID 和书名。", 400);
     }
 
-    const row = await prisma.novelPlatformBinding.upsert({
+    const existing = await prisma.novelPlatformBinding.findFirst({
       where: {
-        novelId_platform: {
-          novelId,
-          platform,
-        },
-      },
-      create: {
         novelId,
+        credentialId: credential.id,
         platform,
-        credentialId: credential.id,
-        bookId,
-        bookTitle,
-        status: NovelPlatformBindingStatus.active,
       },
-      update: {
-        credentialId: credential.id,
-        bookId,
-        bookTitle,
-        status: NovelPlatformBindingStatus.active,
+      select: { id: true },
+    });
+
+    const row = existing
+      ? await prisma.novelPlatformBinding.update({
+          where: { id: existing.id },
+          data: {
+            bookId,
+            bookTitle,
+            status: NovelPlatformBindingStatus.active,
+          },
+          include: {
+            credential: {
+              select: {
+                label: true,
+                status: true,
+                accountDisplayName: true,
+              },
+            },
+          },
+        })
+      : await prisma.novelPlatformBinding.create({
+          data: {
+            novelId,
+            platform,
+            credentialId: credential.id,
+            bookId,
+            bookTitle,
+            status: NovelPlatformBindingStatus.active,
+          },
+          include: {
+            credential: {
+              select: {
+                label: true,
+                status: true,
+                accountDisplayName: true,
+              },
+            },
+          },
+        });
+
+    return mapNovelPlatformBinding(row);
+  }
+
+  async getWorkDetail(bindingId: string): Promise<PublishingWorkDetailResponse> {
+    const userId = requireCurrentUserId();
+    const binding = await prisma.novelPlatformBinding.findFirst({
+      where: {
+        id: bindingId,
+        credential: { userId },
       },
       include: {
         credential: {
           select: {
+            id: true,
             label: true,
             status: true,
+            credentialUuid: true,
+            accountDisplayName: true,
+            accountId: true,
+            lastValidatedAt: true,
+            lastLoginChallengeId: true,
+            lastLoginChallengeStatus: true,
+            lastLoginChallengeJson: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        novel: {
+          include: {
+            chapters: {
+              select: {
+                id: true,
+                generationState: true,
+                chapterStatus: true,
+              },
+            },
           },
         },
       },
     });
+    if (!binding) {
+      throw new AppError("小说发布绑定不存在。", 404);
+    }
 
-    return mapNovelPlatformBinding(row);
+    const [credentials, knownBooks, activePlan, recentJobs] = await Promise.all([
+      prisma.publishingPlatformCredential.findMany({
+        where: { userId },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      }),
+      listKnownBooks(userId),
+      prisma.publishPlan.findFirst({
+        where: {
+          bindingId: binding.id,
+        },
+        include: {
+          items: {
+            orderBy: [{ chapterOrder: "asc" }],
+          },
+        },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      }),
+      prisma.publishDispatchJob.findMany({
+        where: {
+          bindingId: binding.id,
+        },
+        orderBy: [{ createdAt: "desc" }],
+        take: 10,
+      }),
+    ]);
+
+    const completedChapterCount = binding.novel.chapters.filter((chapter) =>
+      chapter.chapterStatus === "completed"
+      || chapter.generationState === "approved"
+      || chapter.generationState === "published").length;
+
+    return {
+      binding: mapNovelPlatformBinding(binding),
+      novel: {
+        id: binding.novel.id,
+        title: binding.novel.title,
+        description: binding.novel.description,
+        estimatedChapterCount: binding.novel.estimatedChapterCount,
+        completedChapterCount,
+        chapterCount: binding.novel.chapters.length,
+      },
+      credentials: credentials.map(mapPublishingCredential),
+      knownBooks,
+      activePlan: activePlan ? mapPublishPlan(activePlan) : null,
+      recentJobs: recentJobs.map(mapPublishDispatchJob),
+      remoteProgress: parsePublishingRemoteProgressSnapshot(binding.remoteProgressSnapshotJson),
+    };
+  }
+
+  private async reconcileBindingProgress(input: {
+    bindingId: string;
+    progress: PublishingBindingRemoteProgress;
+  }): Promise<void> {
+    const effective = getEffectiveRemoteProgressRows(input.progress);
+    const planItems = await prisma.publishPlanItem.findMany({
+      where: { bindingId: input.bindingId },
+      select: {
+        id: true,
+        planId: true,
+        chapterOrder: true,
+        chapterTitle: true,
+        status: true,
+      },
+    });
+
+    const touchedPlanIds = new Set<string>();
+    for (const item of planItems) {
+      const chapterNames = [item.chapterTitle.trim()];
+      let nextStatus: PublishItemStatus | null = null;
+
+      if (
+        effective.publishedOrders.has(item.chapterOrder)
+        || chapterNames.some((name) => name && effective.publishedNames.has(name))
+      ) {
+        nextStatus = PublishItemStatus.published;
+      } else if (
+        effective.effectiveDraftOrders.has(item.chapterOrder)
+        || chapterNames.some((name) => name && effective.effectiveDraftNames.has(name))
+      ) {
+        nextStatus = PublishItemStatus.draft_box;
+      }
+
+      if (!nextStatus || nextStatus === item.status) {
+        continue;
+      }
+
+      touchedPlanIds.add(item.planId);
+      await prisma.publishPlanItem.update({
+        where: { id: item.id },
+        data: {
+          status: nextStatus,
+          lastError: null,
+          publishedAt: nextStatus === PublishItemStatus.published ? new Date() : item.status === PublishItemStatus.published ? undefined : null,
+        },
+      });
+    }
+
+    for (const planId of touchedPlanIds) {
+      await updatePlanStatusFromItems(prisma, planId);
+    }
+  }
+
+  async syncBindingProgress(bindingId: string): Promise<PublishingBindingRemoteProgress> {
+    const userId = requireCurrentUserId();
+    const binding = await prisma.novelPlatformBinding.findFirst({
+      where: {
+        id: bindingId,
+        credential: { userId },
+      },
+      include: {
+        credential: true,
+      },
+    });
+    if (!binding) {
+      throw new AppError("小说发布绑定不存在。", 404);
+    }
+
+    const progress = await this.dispatchClient.getBookProgress({
+      credentialUuid: binding.credential.credentialUuid,
+      bookId: binding.bookId,
+      bookTitle: binding.bookTitle,
+    });
+    const syncedAt = new Date().toISOString();
+    const snapshot = createPublishingRemoteProgressSnapshot(progress, syncedAt);
+
+    await prisma.novelPlatformBinding.update({
+      where: { id: binding.id },
+      data: {
+        lastValidatedAt: new Date(),
+        remoteProgressSnapshotJson: safeJsonStringify(snapshot),
+      },
+    });
+    await this.reconcileBindingProgress({
+      bindingId: binding.id,
+      progress: snapshot,
+    });
+
+    return snapshot;
   }
 
   async getWorkspace(novelId: string) {
@@ -305,6 +525,27 @@ export class PublishingService {
     };
   }
 
+  async generatePlanForBinding(bindingId: string, request: GeneratePublishPlanRequest) {
+    const userId = requireCurrentUserId();
+    const binding = await prisma.novelPlatformBinding.findFirst({
+      where: {
+        id: bindingId,
+        credential: { userId },
+      },
+      select: {
+        id: true,
+        novelId: true,
+      },
+    });
+    if (!binding) {
+      throw new AppError("小说发布绑定不存在。", 404);
+    }
+    return this.generatePlan(binding.novelId, {
+      ...request,
+      bindingId: binding.id,
+    });
+  }
+
   async generatePlan(novelId: string, request: GeneratePublishPlanRequest) {
     const userId = requireCurrentUserId();
     await ensureNovel(novelId, userId);
@@ -315,10 +556,21 @@ export class PublishingService {
     if (!instruction) {
       throw new AppError("请填写发布节奏。", 400);
     }
+    const remoteProgressSnapshot = parsePublishingRemoteProgressSnapshot(binding.remoteProgressSnapshotJson);
+    if (!remoteProgressSnapshot) {
+      throw new AppError("首次生成发布时间表前，请先同步远端进度。", 400);
+    }
 
     const [chapters, volumeTitleByChapterOrder] = await Promise.all([
       prisma.chapter.findMany({
-        where: { novelId },
+        where: {
+          novelId,
+          OR: [
+            { chapterStatus: "completed" },
+            { generationState: "approved" },
+            { generationState: "published" },
+          ],
+        },
         select: {
           id: true,
           order: true,
@@ -354,6 +606,12 @@ export class PublishingService {
       novelId,
       bindingId: binding.id,
     });
+    const remoteEffective = getEffectiveRemoteProgressRows(remoteProgressSnapshot);
+    for (const chapter of chapters) {
+      if (remoteEffective.publishedOrders.has(chapter.order) || remoteEffective.effectiveDraftOrders.has(chapter.order)) {
+        continuation.skipChapterIds.add(chapter.id);
+      }
+    }
     const continuedSchedule = continueScheduleAfterTime({
       baseSchedule: resolved,
       occupiedPlannedTime: continuation.occupiedPlannedTime,
@@ -386,6 +644,18 @@ export class PublishingService {
       );
     }
     const mode = normalizeMode(request.mode);
+    const defaultChapterCount = Math.max(
+      0,
+      chapters.length
+      - getEffectiveRemoteProgressRows(remoteProgressSnapshot).publishedCount,
+    );
+    const chapterCount = typeof request.chapterCount === "number" && request.chapterCount > 0
+      ? request.chapterCount
+      : defaultChapterCount || undefined;
+    const scopedItems = chapterCount ? items.slice(0, chapterCount) : items;
+    if (scopedItems.length === 0) {
+      throw new AppError("当前没有可纳入发布计划的章节。", 400);
+    }
 
     const row = await prisma.$transaction(async (tx) => {
       await tx.publishPlan.updateMany({
@@ -416,7 +686,7 @@ export class PublishingService {
           publishTimeOfDay: continuedSchedule.publishTime,
           status: PublishPlanStatus.ready,
           items: {
-            create: items.map((item) => ({
+            create: scopedItems.map((item) => ({
               novelId,
               bindingId: binding.id,
               chapterId: item.chapterId,
@@ -496,22 +766,21 @@ export class PublishingService {
     }
 
     const mode = normalizeMode(request.mode ?? plan.mode);
-    const groups = groupPublishPlanItemsByPlannedTime(plan.items);
     const jobs = [];
 
-    for (const group of groups) {
+    for (const item of plan.items) {
       const requestId = [
         "publish",
         plan.id,
         mode,
-        group.plannedPublishTime.replace(/[-: ]/g, ""),
-        group.items.map((item) => item.id).sort().join("_"),
+        item.plannedPublishTime.replace(/[-: ]/g, ""),
+        item.id,
       ].join(":");
-      const itemIds = group.items.map((item) => item.id);
+      const itemIds = [item.id];
       const chapters = await prisma.chapter.findMany({
         where: {
           novelId,
-          id: { in: group.items.map((item) => item.chapterId) },
+          id: item.chapterId,
         },
         select: {
           id: true,
@@ -521,19 +790,17 @@ export class PublishingService {
         },
       });
       const chapterById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
-      const dispatchChapters = group.items.map((item) => {
-        const chapter = chapterById.get(item.chapterId);
-        const content = chapter?.content?.trim();
-        if (!chapter || !content) {
-          throw new AppError(`第 ${item.chapterOrder} 章没有正文，无法提交发布平台。`, 400);
-        }
-        return {
-          order: item.chapterOrder,
-          title: item.chapterTitle,
-          volumeTitle: item.volumeTitle,
-          content,
-        };
-      });
+      const chapter = chapterById.get(item.chapterId);
+      const content = chapter?.content?.trim();
+      if (!chapter || !content) {
+        throw new AppError(`第 ${item.chapterOrder} 章没有正文，无法提交发布平台。`, 400);
+      }
+      const dispatchChapters = [{
+        order: item.chapterOrder,
+        title: item.chapterTitle,
+        volumeTitle: item.volumeTitle,
+        content,
+      }];
 
       const localJob = await prisma.$transaction(async (tx) => {
         const job = await tx.publishDispatchJob.upsert({
@@ -546,15 +813,15 @@ export class PublishingService {
             requestId,
             platform: PublishingPlatform.fanqie,
             mode,
-            plannedPublishTime: group.plannedPublishTime,
+            plannedPublishTime: item.plannedPublishTime,
             status: PublishDispatchJobStatus.queued,
             credentialUuid: plan.binding.credential.credentialUuid,
             bookId: plan.binding.bookId,
             bookTitle: plan.binding.bookTitle,
-            chapterCount: group.items.length,
+            chapterCount: 1,
             payloadSummaryJson: safeJsonStringify({
-              chapterOrders: group.items.map((item) => item.chapterOrder),
-              chapterTitles: group.items.map((item) => item.chapterTitle),
+              chapterOrders: [item.chapterOrder],
+              chapterTitles: [item.chapterTitle],
             }),
           },
           update: {},
@@ -587,7 +854,7 @@ export class PublishingService {
           requestId,
           publishOptions: {
             useAi: request.useAi,
-            timerTime: group.plannedPublishTime,
+            timerTime: item.plannedPublishTime,
             dailyWordLimit: request.dailyWordLimit,
           },
           chapters: dispatchChapters,
@@ -642,11 +909,30 @@ export class PublishingService {
           });
         }
         jobs.push(await prisma.publishDispatchJob.findUniqueOrThrow({ where: { id: localJob.id } }));
+        break;
       }
     }
 
     await updatePlanStatusFromItems(prisma, plan.id);
     return jobs.map(mapPublishDispatchJob);
+  }
+
+  async submitPlanByBinding(bindingId: string, planId: string, request: SubmitPublishPlanRequest) {
+    const userId = requireCurrentUserId();
+    const binding = await prisma.novelPlatformBinding.findFirst({
+      where: {
+        id: bindingId,
+        credential: { userId },
+      },
+      select: {
+        id: true,
+        novelId: true,
+      },
+    });
+    if (!binding) {
+      throw new AppError("小说发布绑定不存在。", 404);
+    }
+    return this.submitPlan(binding.novelId, planId, request);
   }
 
   async refreshJob(novelId: string, jobId: string) {
@@ -709,6 +995,24 @@ export class PublishingService {
     });
 
     return mapPublishDispatchJob(updated);
+  }
+
+  async refreshJobByBinding(bindingId: string, jobId: string) {
+    const userId = requireCurrentUserId();
+    const binding = await prisma.novelPlatformBinding.findFirst({
+      where: {
+        id: bindingId,
+        credential: { userId },
+      },
+      select: {
+        id: true,
+        novelId: true,
+      },
+    });
+    if (!binding) {
+      throw new AppError("小说发布绑定不存在。", 404);
+    }
+    return this.refreshJob(binding.novelId, jobId);
   }
 }
 

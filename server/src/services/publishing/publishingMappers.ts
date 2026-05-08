@@ -76,6 +76,7 @@ export function mapNovelPlatformBinding(row: {
   credential: {
     label: string;
     status: "created" | "login_pending" | "ready" | "expired" | "invalid";
+    accountDisplayName?: string | null;
   };
   bookId: string;
   bookTitle: string;
@@ -91,6 +92,7 @@ export function mapNovelPlatformBinding(row: {
     credentialId: row.credentialId,
     credentialLabel: row.credential.label,
     credentialStatus: row.credential.status,
+    credentialAccountDisplayName: row.credential.accountDisplayName ?? null,
     bookId: row.bookId,
     bookTitle: row.bookTitle,
     status: row.status,

@@ -65,6 +65,24 @@ const publishJobResponseSchema = z.object({
   job: dispatchJobSchema,
 });
 
+const progressChapterRowSchema = z.object({
+  source: z.string(),
+  order: z.number().int().optional(),
+  title: z.string(),
+  chapterName: z.string(),
+  itemId: z.string().optional(),
+}).passthrough();
+
+const bookProgressResponseSchema = z.object({
+  progress: z.object({
+    bookId: z.string(),
+    bookTitle: z.string(),
+    publishedChapters: z.array(progressChapterRowSchema),
+    draftChapters: z.array(progressChapterRowSchema),
+    effectiveDraftChapters: z.array(progressChapterRowSchema),
+  }),
+});
+
 const dispatchErrorSchema = z.object({
   error: z.object({
     code: z.string().optional(),
@@ -119,6 +137,22 @@ export interface FanqieDispatchPublishChapter {
   title: string;
   volumeTitle?: string | null;
   content: string;
+}
+
+export interface FanqieDispatchProgressChapterRow {
+  source: string;
+  order?: number;
+  title: string;
+  chapterName: string;
+  itemId?: string;
+}
+
+export interface FanqieDispatchBookProgress {
+  bookId: string;
+  bookTitle: string;
+  publishedChapters: FanqieDispatchProgressChapterRow[];
+  draftChapters: FanqieDispatchProgressChapterRow[];
+  effectiveDraftChapters: FanqieDispatchProgressChapterRow[];
 }
 
 export class FanqieDispatchApiError extends Error {
@@ -289,5 +323,22 @@ export class FanqieDispatchClient {
       schema: publishJobResponseSchema,
     });
     return response.job;
+  }
+
+  async getBookProgress(input: {
+    credentialUuid: string;
+    bookId: string;
+    bookTitle: string;
+  }): Promise<FanqieDispatchBookProgress> {
+    const search = new URLSearchParams({
+      bookId: input.bookId,
+      bookTitle: input.bookTitle,
+    });
+    const response = await this.request({
+      method: "GET",
+      path: `/credentials/${encodeURIComponent(input.credentialUuid)}/books/progress?${search.toString()}`,
+      schema: bookProgressResponseSchema,
+    });
+    return response.progress;
   }
 }

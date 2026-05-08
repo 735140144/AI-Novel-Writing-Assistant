@@ -596,6 +596,7 @@ model NovelPlatformBinding {
   bookTitle       String
   status          NovelPlatformBindingStatus  @default(active)
   lastValidatedAt DateTime?
+  remoteProgressSnapshotJson String?
   novel           Novel                       @relation(fields: [novelId], references: [id], onDelete: Cascade)
   credential      PublishingPlatformCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
   plans           PublishPlan[]
@@ -604,7 +605,7 @@ model NovelPlatformBinding {
   createdAt       DateTime                    @default(now())
   updatedAt       DateTime                    @updatedAt
 
-  @@unique([novelId, platform])
+  @@unique([novelId, credentialId, platform])
   @@index([credentialId])
   @@index([novelId, platform, status])
 }

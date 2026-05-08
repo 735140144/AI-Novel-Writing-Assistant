@@ -9,13 +9,18 @@ const credentialIdParamsSchema = z.object({
   credentialId: z.string().trim().min(1),
 });
 
+const publishingBindingParamsSchema = z.object({
+  bindingId: z.string().trim().min(1),
+});
+
 const publishingJobParamsSchema = z.object({
-  id: z.string().trim().min(1),
   jobId: z.string().trim().min(1),
 });
 
+const publishingJobRefreshParamsSchema = publishingBindingParamsSchema.merge(publishingJobParamsSchema);
+
 const publishPlanParamsSchema = z.object({
-  id: z.string().trim().min(1),
+  bindingId: z.string().trim().min(1),
   planId: z.string().trim().min(1),
 });
 
@@ -41,8 +46,8 @@ const upsertBindingSchema = z.object({
 });
 
 const generatePlanSchema = z.object({
-  bindingId: z.string().trim().min(1).optional(),
   instruction: z.string().trim().min(1).max(1000),
+  chapterCount: z.number().int().min(1).max(2000).optional(),
   mode: z.enum(["draft", "publish"]).optional(),
   startChapterOrder: z.number().int().min(1).max(2000).optional(),
   endChapterOrder: z.number().int().min(1).max(2000).optional(),
@@ -144,8 +149,21 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
     }
   });
 
-  router.put(
-    "/:id/publishing/binding",
+  router.get("/publishing/works", async (_req, res, next) => {
+    try {
+      const data = await publishingService.listWorks();
+      res.status(200).json({
+        success: true,
+        data,
+        message: "发布作品列表加载完成。",
+      } satisfies ApiResponse<typeof data>);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post(
+    "/:id/publishing/bindings",
     validate({ params: idParamsSchema, body: upsertBindingSchema }),
     async (req, res, next) => {
       try {
@@ -154,7 +172,7 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
           id,
           req.body as z.infer<typeof upsertBindingSchema>,
         );
-        res.status(200).json({
+        res.status(201).json({
           success: true,
           data,
           message: "番茄书籍绑定可用于生成发布时间表。",
@@ -165,13 +183,50 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
     },
   );
 
-  router.post(
-    "/:id/publishing/plans",
-    validate({ params: idParamsSchema, body: generatePlanSchema }),
+  router.get(
+    "/publishing/works/:bindingId",
+    validate({ params: publishingBindingParamsSchema }),
     async (req, res, next) => {
       try {
-        const { id } = req.params as z.infer<typeof idParamsSchema>;
-        const data = await publishingService.generatePlan(id, req.body as z.infer<typeof generatePlanSchema>);
+        const { bindingId } = req.params as z.infer<typeof publishingBindingParamsSchema>;
+        const data = await publishingService.getWorkDetail(bindingId);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "发布详情加载完成。",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/publishing/works/:bindingId/progress/sync",
+    validate({ params: publishingBindingParamsSchema }),
+    async (req, res, next) => {
+      try {
+        const { bindingId } = req.params as z.infer<typeof publishingBindingParamsSchema>;
+        const data = await publishingService.syncBindingProgress(bindingId);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "远端发布进度同步完成。",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
+  router.post(
+    "/publishing/works/:bindingId/plans",
+    validate({ params: publishingBindingParamsSchema, body: generatePlanSchema }),
+    async (req, res, next) => {
+      try {
+        const { bindingId } = req.params as z.infer<typeof publishingBindingParamsSchema>;
+        const body = req.body as z.infer<typeof generatePlanSchema>;
+        const data = await publishingService.generatePlanForBinding(bindingId, body);
         res.status(201).json({
           success: true,
           data,
@@ -184,12 +239,12 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
   );
 
   router.post(
-    "/:id/publishing/plans/:planId/submit",
+    "/publishing/works/:bindingId/plans/:planId/submit",
     validate({ params: publishPlanParamsSchema, body: submitPlanSchema }),
     async (req, res, next) => {
       try {
-        const { id, planId } = req.params as z.infer<typeof publishPlanParamsSchema>;
-        const data = await publishingService.submitPlan(id, planId, req.body as z.infer<typeof submitPlanSchema>);
+        const { bindingId, planId } = req.params as z.infer<typeof publishPlanParamsSchema>;
+        const data = await publishingService.submitPlanByBinding(bindingId, planId, req.body as z.infer<typeof submitPlanSchema>);
         res.status(202).json({
           success: true,
           data,
@@ -202,12 +257,12 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
   );
 
   router.post(
-    "/:id/publishing/jobs/:jobId/refresh",
-    validate({ params: publishingJobParamsSchema }),
+    "/publishing/works/:bindingId/jobs/:jobId/refresh",
+    validate({ params: publishingJobRefreshParamsSchema }),
     async (req, res, next) => {
       try {
-        const { id, jobId } = req.params as z.infer<typeof publishingJobParamsSchema>;
-        const data = await publishingService.refreshJob(id, jobId);
+        const { bindingId, jobId } = req.params as z.infer<typeof publishingJobRefreshParamsSchema>;
+        const data = await publishingService.refreshJobByBinding(bindingId, jobId);
         res.status(200).json({
           success: true,
           data,
