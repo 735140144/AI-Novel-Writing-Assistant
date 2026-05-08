@@ -9,6 +9,7 @@ const novelList = readFileSync("client/src/pages/novels/NovelList.tsx", "utf8");
 const desktopView = readFileSync("client/src/pages/novels/components/NovelEditView.tsx", "utf8");
 const mobileView = readFileSync("client/src/pages/novels/mobile/MobileNovelEditView.tsx", "utf8");
 const publishingTab = readFileSync("client/src/pages/novels/components/PublishingWorkspaceTab.tsx", "utf8");
+const publishingHook = readFileSync("client/src/pages/novels/hooks/useNovelPublishingWorkspace.ts", "utf8");
 const sidebar = readFileSync("client/src/components/layout/Sidebar.tsx", "utf8");
 const mobileNavigation = readFileSync("client/src/components/layout/mobile/mobileSiteNavigation.ts", "utf8");
 const router = readFileSync("client/src/router/index.tsx", "utf8");
@@ -61,4 +62,25 @@ test("standalone publishing page selects a novel and reuses publishing workspace
   assert.match(publishingPage, /useNovelPublishingWorkspace\(\{/);
   assert.match(publishingPage, /<PublishingWorkspaceTab \{\.\.\.publishingTab\} \/>/);
   assert.match(publishingPage, /<Link to="\/novels\/create\?mode=director">AI 自动导演开书<\/Link>/);
+  assert.match(publishingPage, /已有章节：\{selectedNovel\._count\.chapters\}/);
+  assert.match(publishingPage, /预期章节：\{selectedNovel\.estimatedChapterCount \?\? "-"\}/);
+  assert.doesNotMatch(publishingPage, /max-h-\[520px\] space-y-2 overflow-auto pr-1/);
+});
+
+test("publishing workspace keeps local known-book dropdown instead of exposing only raw platform id", () => {
+  assert.match(publishingTab, /已维护番茄书籍/);
+  assert.match(publishingTab, /onSelectedKnownBookKeyChange/);
+  assert.match(publishingTab, /优先通过上方书籍下拉自动带出/);
+  assert.match(publishingTab, /htmlFor="publishing-book-choice"/);
+  assert.doesNotMatch(publishingTab, /平台书籍 ID/);
+});
+
+test("publishing workspace hides QR once the credential is ready", () => {
+  assert.match(publishingTab, /latestChallenge && selectedCredential\?\.status !== "ready"/);
+});
+
+test("publishing workspace resets stale local book fields when the user changes novels or accounts", () => {
+  assert.match(publishingHook, /const nextSignature = \[\s*novelId,/);
+  assert.match(publishingHook, /setBookId\(""\);\s*setBookTitle\(""\);\s*setSelectedKnownBookKey\(""\);/);
+  assert.match(publishingHook, /syncSelectedCredential\(selectedBook\.credentialId, \{ preserveSelectedBook: true \}\)/);
 });

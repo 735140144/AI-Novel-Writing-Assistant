@@ -48,6 +48,7 @@ import type {
   PublishItemStatus,
   PublishMode,
   PublishPlan,
+  PublishingKnownBookOption,
   PublishingLoginChallenge,
   PublishingPlatformCredential,
 } from "@ai-novel/shared/types/publishing";
@@ -438,6 +439,7 @@ export interface PipelineTabViewProps {
 export interface PublishingTabViewProps {
   novelId: string;
   credentials: PublishingPlatformCredential[];
+  knownBooks: PublishingKnownBookOption[];
   binding: NovelPlatformBinding | null;
   activePlan: PublishPlan | null;
   recentJobs: PublishDispatchJob[];
@@ -446,6 +448,8 @@ export interface PublishingTabViewProps {
   onAccountLabelChange: (value: string) => void;
   selectedCredentialId: string;
   onSelectedCredentialIdChange: (value: string) => void;
+  selectedKnownBookKey: string;
+  onSelectedKnownBookKeyChange: (value: string) => void;
   bookId: string;
   onBookIdChange: (value: string) => void;
   bookTitle: string;

@@ -6,7 +6,6 @@ import type {
 } from "@ai-novel/shared/types/publishing";
 import {
   NovelPlatformBindingStatus,
-  Prisma,
   PublishDispatchJobStatus,
   PublishItemStatus,
   PublishPlanStatus,
@@ -15,15 +14,34 @@ import {
 } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
-import { runStructuredPrompt } from "../../prompting/core/promptRunner";
-import { publishingSchedulePrompt } from "../../prompting/prompts/publishing/publishingSchedule.prompts";
-import { getRequestContext } from "../../runtime/requestContext";
-import { FanqieDispatchApiError, FanqieDispatchClient, type FanqieDispatchChallenge } from "./FanqieDispatchClient";
+import { FanqieDispatchApiError, FanqieDispatchClient } from "./FanqieDispatchClient";
+import { resolveCredentialChallengeForStatus, resolveCredentialLabel } from "./publishingCredentialState";
 import {
-  buildChapterPublishSchedule,
-  getNextDateStringInTimeZone,
+  normalizeMode,
+  normalizePlatform,
+  safeJsonStringify,
+  sanitizeChallengeForClient,
+  stringifyError,
+  type PrismaLike,
+} from "./publishingCore";
+import { parseScheduleInstruction } from "./publishingPlanGeneration";
+import {
+  ensureNovel,
+  getActiveBinding,
+  getOwnedBinding,
+  getOwnedCredential,
+  listKnownBooks,
+  listVolumeTitlesByChapterOrder,
+  requireCurrentUserId,
+  resolveScheduleContinuation,
+  updatePlanStatusFromItems,
+  upsertCredentialFromDispatch,
+} from "./publishingQueries";
+import {
+  buildChapterPublishScheduleFromOffset,
+  continueScheduleAfterTime,
   groupPublishPlanItemsByPlannedTime,
-  normalizeStructuredSchedule,
+  resolveContinuationStartIndexOffset,
 } from "./publishingSchedule";
 import { mapDispatchJobStatusToItemStatus, resolveDispatchErrorItemStatus } from "./publishingStatus";
 import {
@@ -34,245 +52,11 @@ import {
   mapPublishPlan,
 } from "./publishingMappers";
 
-type PublishingTransaction = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
-type PrismaLike = typeof prisma | PublishingTransaction;
-
-function safeJsonStringify(value: unknown): string {
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return JSON.stringify({ error: "JSON 序列化失败。" });
-  }
-}
-
-function stringifyError(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-  if (typeof error === "string" && error.trim()) {
-    return error.trim();
-  }
-  return "发布平台请求失败。";
-}
-
-function sanitizeChallengeForClient(challenge: FanqieDispatchChallenge | null): FanqieDispatchChallenge | null {
-  if (!challenge) {
-    return null;
-  }
-  const { qrPageUrl: _qrPageUrl, qrImageUrl: _qrImageUrl, ...safeChallenge } = challenge;
-  return safeChallenge;
-}
-
-function parseDate(value: string | undefined): Date | undefined {
-  if (!value?.trim()) {
-    return undefined;
-  }
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function normalizePlatform(value: string | undefined | null): PublishingPlatform {
-  if (!value || value === "fanqie") {
-    return PublishingPlatform.fanqie;
-  }
-  throw new AppError("当前仅支持番茄平台。", 400);
-}
-
-function normalizeMode(value: string | undefined | null): PublishMode {
-  return value === "publish" ? "publish" : "draft";
-}
-
-function normalizeOptionalPositiveInt(value: number | undefined, max: number): number | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Number.isFinite(value)) {
-    return undefined;
-  }
-  return Math.max(1, Math.min(max, Math.floor(value)));
-}
-
-function resolvePlanStatusFromItemStatuses(statuses: PublishItemStatus[]): PublishPlanStatus {
-  if (statuses.length === 0) {
-    return PublishPlanStatus.draft;
-  }
-  if (statuses.some((status) => status === PublishItemStatus.submitting)) {
-    return PublishPlanStatus.submitting;
-  }
-  if (statuses.every((status) => status === PublishItemStatus.draft_box || status === PublishItemStatus.published)) {
-    return PublishPlanStatus.completed;
-  }
-  if (statuses.some((status) => status === PublishItemStatus.failed || status === PublishItemStatus.relogin_required)) {
-    return PublishPlanStatus.failed;
-  }
-  return PublishPlanStatus.ready;
-}
-
 export class PublishingService {
   constructor(private readonly dispatchClient = new FanqieDispatchClient()) {}
 
-  private requireCurrentUserId(): string {
-    const userId = getRequestContext()?.userId?.trim();
-    if (!userId) {
-      throw new AppError("未登录，请先登录。", 401);
-    }
-    return userId;
-  }
-
-  private buildOwnedNovelWhere(novelId: string, userId: string) {
-    if (getRequestContext()?.authMode === "session") {
-      return { id: novelId, userId };
-    }
-    return { id: novelId };
-  }
-
-  private async ensureNovel(novelId: string, userId: string) {
-    const novel = await prisma.novel.findFirst({
-      where: this.buildOwnedNovelWhere(novelId, userId),
-      select: { id: true, title: true, userId: true },
-    });
-    if (!novel) {
-      throw new AppError("小说不存在。", 404);
-    }
-    return novel;
-  }
-
-  private async getOwnedCredential(credentialId: string, userId: string, db: PrismaLike = prisma) {
-    const credential = await db.publishingPlatformCredential.findFirst({
-      where: {
-        id: credentialId,
-        userId,
-      },
-    });
-    if (!credential) {
-      throw new AppError("发布平台账号不存在。", 404);
-    }
-    return credential;
-  }
-
-  private async getOwnedBinding(novelId: string, bindingId: string, userId: string, db: PrismaLike = prisma) {
-    await this.ensureNovel(novelId, userId);
-    const binding = await db.novelPlatformBinding.findFirst({
-      where: {
-        id: bindingId,
-        novelId,
-        credential: {
-          userId,
-        },
-      },
-      include: {
-        credential: true,
-      },
-    });
-    if (!binding) {
-      throw new AppError("小说发布绑定不存在。", 404);
-    }
-    return binding;
-  }
-
-  private async getActiveBinding(novelId: string, userId: string, db: PrismaLike = prisma) {
-    await this.ensureNovel(novelId, userId);
-    const binding = await db.novelPlatformBinding.findFirst({
-      where: {
-        novelId,
-        platform: PublishingPlatform.fanqie,
-        credential: {
-          userId,
-        },
-      },
-      include: { credential: true },
-    });
-    if (!binding) {
-      throw new AppError("请先绑定番茄书籍。", 400);
-    }
-    return binding;
-  }
-
-  private async listVolumeTitlesByChapterOrder(novelId: string): Promise<Map<number, string>> {
-    const volumes = await prisma.volumePlan.findMany({
-      where: {
-        novelId,
-        status: "active",
-      },
-      select: {
-        title: true,
-        chapters: {
-          select: {
-            chapterOrder: true,
-          },
-        },
-      },
-      orderBy: [{ sortOrder: "asc" }],
-    });
-    const volumeTitleByChapterOrder = new Map<number, string>();
-    for (const volume of volumes) {
-      const title = volume.title.trim();
-      if (!title) {
-        continue;
-      }
-      for (const chapter of volume.chapters) {
-        if (!volumeTitleByChapterOrder.has(chapter.chapterOrder)) {
-          volumeTitleByChapterOrder.set(chapter.chapterOrder, title);
-        }
-      }
-    }
-    return volumeTitleByChapterOrder;
-  }
-
-  private async updatePlanStatusFromItems(db: PrismaLike, planId: string): Promise<void> {
-    const items = await db.publishPlanItem.findMany({
-      where: { planId },
-      select: { status: true },
-    });
-    await db.publishPlan.update({
-      where: { id: planId },
-      data: {
-        status: resolvePlanStatusFromItemStatuses(items.map((item) => item.status)),
-      },
-    });
-  }
-
-  private async upsertCredentialFromDispatch(input: {
-    userId: string;
-    label: string;
-    credentialUuid: string;
-    status: "created" | "login_pending" | "ready" | "expired" | "invalid";
-    lastValidatedAt?: string;
-    account?: {
-      accountId?: string;
-      accountDisplayName?: string;
-    };
-  }) {
-    return prisma.publishingPlatformCredential.upsert({
-      where: {
-        userId_platform_credentialUuid: {
-          userId: input.userId,
-          platform: PublishingPlatform.fanqie,
-          credentialUuid: input.credentialUuid,
-        },
-      },
-      create: {
-        userId: input.userId,
-        platform: PublishingPlatform.fanqie,
-        label: input.label,
-        credentialUuid: input.credentialUuid,
-        status: input.status,
-        lastValidatedAt: parseDate(input.lastValidatedAt),
-        accountId: input.account?.accountId ?? null,
-        accountDisplayName: input.account?.accountDisplayName ?? null,
-      },
-      update: {
-        label: input.label,
-        status: input.status,
-        lastValidatedAt: parseDate(input.lastValidatedAt),
-        accountId: input.account?.accountId ?? null,
-        accountDisplayName: input.account?.accountDisplayName ?? null,
-      },
-    });
-  }
-
   async listCredentials() {
-    const userId = this.requireCurrentUserId();
+    const userId = requireCurrentUserId();
     const rows = await prisma.publishingPlatformCredential.findMany({
       where: { userId },
       orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
@@ -285,7 +69,7 @@ export class PublishingService {
     label: string;
     credentialUuid?: string;
   }) {
-    const userId = this.requireCurrentUserId();
+    const userId = requireCurrentUserId();
     const platform = normalizePlatform(input.platform);
     const label = input.label.trim();
     if (!label) {
@@ -331,7 +115,7 @@ export class PublishingService {
     }
 
     const dispatchCredential = await this.dispatchClient.createCredential(label);
-    const row = await this.upsertCredentialFromDispatch({
+    const row = await upsertCredentialFromDispatch({
       userId,
       label: dispatchCredential.label ?? label,
       credentialUuid: dispatchCredential.uuid,
@@ -343,8 +127,8 @@ export class PublishingService {
   }
 
   async bootstrapCredentialLogin(credentialId: string, mode: "create" | "refresh" = "create") {
-    const userId = this.requireCurrentUserId();
-    const credential = await this.getOwnedCredential(credentialId, userId);
+    const userId = requireCurrentUserId();
+    const credential = await getOwnedCredential(credentialId, userId);
     const response = await this.dispatchClient.bootstrapLogin({
       credentialUuid: credential.credentialUuid,
       mode,
@@ -370,8 +154,8 @@ export class PublishingService {
   }
 
   async validateCredential(credentialId: string, challengeId?: string) {
-    const userId = this.requireCurrentUserId();
-    const credential = await this.getOwnedCredential(credentialId, userId);
+    const userId = requireCurrentUserId();
+    const credential = await getOwnedCredential(credentialId, userId);
     const response = await this.dispatchClient.validateCredential({
       credentialUuid: credential.credentialUuid,
       challengeId: (challengeId?.trim() || credential.lastLoginChallengeId) ?? undefined,
@@ -382,12 +166,32 @@ export class PublishingService {
       where: { id: credential.id },
       data: {
         status: response.credential.status,
+        label: resolveCredentialLabel({
+          currentLabel: credential.label,
+          accountDisplayName: response.credential.account?.accountDisplayName,
+          status: response.credential.status,
+        }),
         accountId: response.credential.account?.accountId ?? null,
         accountDisplayName: response.credential.account?.accountDisplayName ?? null,
         lastValidatedAt: new Date(),
-        lastLoginChallengeId: challenge?.id ?? credential.lastLoginChallengeId,
-        lastLoginChallengeStatus: challenge?.status ?? credential.lastLoginChallengeStatus,
-        lastLoginChallengeJson: challenge ? safeJsonStringify(challenge) : credential.lastLoginChallengeJson,
+        lastLoginChallengeId: resolveCredentialChallengeForStatus({
+          status: response.credential.status,
+          challenge,
+        }) === null
+          ? null
+          : challenge?.id ?? credential.lastLoginChallengeId,
+        lastLoginChallengeStatus: resolveCredentialChallengeForStatus({
+          status: response.credential.status,
+          challenge,
+        }) === null
+          ? null
+          : challenge?.status ?? credential.lastLoginChallengeStatus,
+        lastLoginChallengeJson: resolveCredentialChallengeForStatus({
+          status: response.credential.status,
+          challenge,
+        }) === null
+          ? null
+          : challenge ? safeJsonStringify(challenge) : credential.lastLoginChallengeJson,
       },
     });
 
@@ -398,10 +202,10 @@ export class PublishingService {
   }
 
   async upsertNovelBinding(novelId: string, input: UpsertNovelPlatformBindingRequest) {
-    const userId = this.requireCurrentUserId();
-    await this.ensureNovel(novelId, userId);
+    const userId = requireCurrentUserId();
+    await ensureNovel(novelId, userId);
     const platform = normalizePlatform(input.platform);
-    const credential = await this.getOwnedCredential(input.credentialId, userId);
+    const credential = await getOwnedCredential(input.credentialId, userId);
     const bookId = input.bookId.trim();
     const bookTitle = input.bookTitle.trim();
     if (!bookId || !bookTitle) {
@@ -443,13 +247,14 @@ export class PublishingService {
   }
 
   async getWorkspace(novelId: string) {
-    const userId = this.requireCurrentUserId();
-    await this.ensureNovel(novelId, userId);
-    const [credentials, binding, activePlan, recentJobs] = await Promise.all([
+    const userId = requireCurrentUserId();
+    await ensureNovel(novelId, userId);
+    const [credentials, knownBooks, binding, activePlan, recentJobs] = await Promise.all([
       prisma.publishingPlatformCredential.findMany({
         where: { userId },
         orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       }),
+      listKnownBooks(userId),
       prisma.novelPlatformBinding.findFirst({
         where: {
           novelId,
@@ -493,72 +298,19 @@ export class PublishingService {
 
     return {
       credentials: credentials.map(mapPublishingCredential),
+      knownBooks,
       binding: binding ? mapNovelPlatformBinding(binding) : null,
       activePlan: activePlan ? mapPublishPlan(activePlan) : null,
       recentJobs: recentJobs.map(mapPublishDispatchJob),
     };
   }
 
-  private async parseScheduleInstruction(input: {
-    novelId: string;
-    instruction: string;
-    chapters: Array<{ order: number }>;
-    request: GeneratePublishPlanRequest;
-  }) {
-    const minChapterOrder = Math.min(...input.chapters.map((chapter) => chapter.order));
-    const maxChapterOrder = Math.max(...input.chapters.map((chapter) => chapter.order));
-    const timezone = "Asia/Shanghai";
-    const defaultStartDate = getNextDateStringInTimeZone(new Date(), timezone);
-    const todayDate = getNextDateStringInTimeZone(
-      new Date(Date.now() - 24 * 60 * 60 * 1000),
-      timezone,
-    );
-    const result = await runStructuredPrompt({
-      asset: publishingSchedulePrompt,
-      promptInput: {
-        instruction: input.instruction,
-        todayDate,
-        defaultStartDate,
-        minChapterOrder,
-        maxChapterOrder,
-        timezone,
-      },
-      options: {
-        provider: input.request.provider,
-        model: input.request.model,
-        temperature: input.request.temperature,
-        novelId: input.novelId,
-        stage: "publishing_schedule",
-        entrypoint: "novel_publishing_workspace",
-      },
-    });
-
-    const structured = {
-      ...result.output,
-      startChapterOrder: normalizeOptionalPositiveInt(input.request.startChapterOrder, 2000)
-        ?? result.output.startChapterOrder,
-      endChapterOrder: normalizeOptionalPositiveInt(input.request.endChapterOrder, 2000)
-        ?? result.output.endChapterOrder,
-    };
-
-    return {
-      structured,
-      resolved: normalizeStructuredSchedule({
-        structured,
-        defaultStartDate,
-        minChapterOrder,
-        maxChapterOrder,
-        timezone,
-      }),
-    };
-  }
-
   async generatePlan(novelId: string, request: GeneratePublishPlanRequest) {
-    const userId = this.requireCurrentUserId();
-    await this.ensureNovel(novelId, userId);
+    const userId = requireCurrentUserId();
+    await ensureNovel(novelId, userId);
     const binding = request.bindingId
-      ? await this.getOwnedBinding(novelId, request.bindingId, userId)
-      : await this.getActiveBinding(novelId, userId);
+      ? await getOwnedBinding(novelId, request.bindingId, userId)
+      : await getActiveBinding(novelId, userId);
     const instruction = request.instruction.trim();
     if (!instruction) {
       throw new AppError("请填写发布节奏。", 400);
@@ -574,25 +326,65 @@ export class PublishingService {
         },
         orderBy: [{ order: "asc" }],
       }),
-      this.listVolumeTitlesByChapterOrder(novelId),
+      listVolumeTitlesByChapterOrder(novelId),
     ]);
     if (chapters.length === 0) {
       throw new AppError("当前小说还没有可发布章节。", 400);
     }
 
-    const { structured, resolved } = await this.parseScheduleInstruction({
+    let structured;
+    let resolved;
+    try {
+      ({ structured, resolved } = await parseScheduleInstruction({
+        novelId,
+        instruction,
+        chapters,
+        request,
+      }));
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      throw new AppError(
+        error instanceof Error && error.message.trim() ? error.message : "发布时间表生成失败。",
+        400,
+      );
+    }
+    const continuation = await resolveScheduleContinuation({
       novelId,
-      instruction,
-      chapters,
-      request,
+      bindingId: binding.id,
     });
-    const items = buildChapterPublishSchedule({
-      chapters: chapters.map((chapter) => ({
-        ...chapter,
-        volumeTitle: volumeTitleByChapterOrder.get(chapter.order) ?? null,
-      })),
-      schedule: resolved,
+    const continuedSchedule = continueScheduleAfterTime({
+      baseSchedule: resolved,
+      occupiedPlannedTime: continuation.occupiedPlannedTime,
+      occupiedItemCount: continuation.occupiedCount,
     });
+    let items;
+    try {
+      items = buildChapterPublishScheduleFromOffset({
+        chapters: chapters.map((chapter) => ({
+          ...chapter,
+          volumeTitle: volumeTitleByChapterOrder.get(chapter.order) ?? null,
+        })),
+        schedule: continuedSchedule,
+        skipChapterIds: continuation.skipChapterIds,
+        startIndexOffset: resolveContinuationStartIndexOffset({
+          schedule: continuedSchedule,
+          occupiedPlannedTime: continuation.occupiedPlannedTime,
+        }),
+      });
+    } catch (error) {
+      if (error instanceof AppError) {
+        throw error;
+      }
+      if (error instanceof Error && error.message === "没有可生成发布时间的章节。") {
+        throw new AppError("当前章节已经存在本地发布进度，请继续使用现有计划或调整章节范围。", 400);
+      }
+      throw new AppError(
+        error instanceof Error && error.message.trim() ? error.message : "发布时间表生成失败。",
+        400,
+      );
+    }
     const mode = normalizeMode(request.mode);
 
     const row = await prisma.$transaction(async (tx) => {
@@ -616,12 +408,12 @@ export class PublishingService {
           mode,
           instruction,
           structuredScheduleJson: safeJsonStringify(structured),
-          resolvedScheduleJson: safeJsonStringify(resolved),
-          timezone: resolved.timezone,
-          startChapterOrder: resolved.startChapterOrder,
-          endChapterOrder: resolved.endChapterOrder,
-          chaptersPerDay: resolved.chaptersPerDay,
-          publishTimeOfDay: resolved.publishTime,
+          resolvedScheduleJson: safeJsonStringify(continuedSchedule),
+          timezone: continuedSchedule.timezone,
+          startChapterOrder: continuedSchedule.startChapterOrder,
+          endChapterOrder: continuedSchedule.endChapterOrder,
+          chaptersPerDay: continuedSchedule.chaptersPerDay,
+          publishTimeOfDay: continuedSchedule.publishTime,
           status: PublishPlanStatus.ready,
           items: {
             create: items.map((item) => ({
@@ -676,8 +468,8 @@ export class PublishingService {
   }
 
   async submitPlan(novelId: string, planId: string, request: SubmitPublishPlanRequest) {
-    const userId = this.requireCurrentUserId();
-    await this.ensureNovel(novelId, userId);
+    const userId = requireCurrentUserId();
+    await ensureNovel(novelId, userId);
     const plan = await prisma.publishPlan.findFirst({
       where: {
         id: planId,
@@ -853,13 +645,13 @@ export class PublishingService {
       }
     }
 
-    await this.updatePlanStatusFromItems(prisma, plan.id);
+    await updatePlanStatusFromItems(prisma, plan.id);
     return jobs.map(mapPublishDispatchJob);
   }
 
   async refreshJob(novelId: string, jobId: string) {
-    const userId = this.requireCurrentUserId();
-    await this.ensureNovel(novelId, userId);
+    const userId = requireCurrentUserId();
+    await ensureNovel(novelId, userId);
     const localJob = await prisma.publishDispatchJob.findFirst({
       where: {
         id: jobId,
@@ -911,7 +703,7 @@ export class PublishingService {
         });
       }
       if (localJob.planId) {
-        await this.updatePlanStatusFromItems(tx, localJob.planId);
+        await updatePlanStatusFromItems(tx, localJob.planId);
       }
       return job;
     });

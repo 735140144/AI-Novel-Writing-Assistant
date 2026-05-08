@@ -4,21 +4,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { getNovelList } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
 import PublishingWorkspaceTab from "@/pages/novels/components/PublishingWorkspaceTab";
 import { useNovelPublishingWorkspace } from "@/pages/novels/hooks/useNovelPublishingWorkspace";
 
-const DIRECTOR_CREATE_LINK = "/novels/create?mode=director";
 const MANUAL_CREATE_LINK = "/novels/create";
+const DIRECTOR_CREATE_LINK = "/novels/create?mode=director";
 
 const defaultPublishingLlm = {};
-
-function formatNovelStatus(status: string): string {
-  return status === "published" ? "已发布" : "草稿";
-}
 
 export default function PublishingPlatformPage() {
   const queryClient = useQueryClient();
@@ -132,38 +126,6 @@ export default function PublishingPlatformPage() {
                     </option>
                   ))}
                 </select>
-
-                <div className="max-h-[520px] space-y-2 overflow-auto pr-1">
-                  {novels.map((novel) => {
-                    const isSelected = novel.id === activeNovelId;
-                    return (
-                      <button
-                        key={novel.id}
-                        type="button"
-                        className={cn(
-                          "w-full rounded-lg border px-3 py-3 text-left text-sm transition",
-                          isSelected
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-border/70 bg-background hover:border-primary/40 hover:bg-primary/5",
-                        )}
-                        onClick={() => handleSelectNovel(novel.id)}
-                      >
-                        <div className="flex min-w-0 items-center justify-between gap-2">
-                          <span className="truncate font-medium">{novel.title}</span>
-                          <Badge variant={novel.status === "published" ? "default" : "secondary"}>
-                            {formatNovelStatus(novel.status)}
-                          </Badge>
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {novel.description || "可选择这本小说生成发布计划。"}
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          {novel._count.chapters} 章
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
               </CardContent>
             </Card>
           </aside>
@@ -171,17 +133,16 @@ export default function PublishingPlatformPage() {
           <section className="min-w-0 space-y-4">
             {selectedNovel ? (
               <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h2 className="truncate text-lg font-semibold">{selectedNovel.title}</h2>
-                      <Badge variant={selectedNovel.status === "published" ? "default" : "secondary"}>
-                        {formatNovelStatus(selectedNovel.status)}
-                      </Badge>
-                    </div>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 space-y-2">
+                    <h2 className="truncate text-lg font-semibold">{selectedNovel.title}</h2>
                     <p className="text-sm leading-6 text-muted-foreground">
                       {selectedNovel.description || "为这本小说绑定平台书籍，生成发布时间表并提交章节。"}
                     </p>
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                      <span>已有章节：{selectedNovel._count.chapters}</span>
+                      <span>预期章节：{selectedNovel.estimatedChapterCount ?? "-"}</span>
+                    </div>
                   </div>
                   <Button asChild variant="outline" size="sm">
                     <Link to={`/novels/${selectedNovel.id}/edit`}>进入小说工作台</Link>

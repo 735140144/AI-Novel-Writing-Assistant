@@ -52,6 +52,7 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
   const [message, setMessage] = useState("");
   const [accountLabel, setAccountLabel] = useState("番茄作者号");
   const [credentialId, setCredentialId] = useState("");
+  const [selectedKnownBookKey, setSelectedKnownBookKey] = useState("");
   const [bookId, setBookId] = useState("");
   const [bookTitle, setBookTitle] = useState("");
   const [scheduleInstruction, setScheduleInstruction] = useState("每日 8 点发布 2 章节");
@@ -104,7 +105,11 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
     mutationFn: (nextCredentialId: string) => validatePublishingCredential(nextCredentialId),
     onSuccess: async (response) => {
       const status = response.data?.credential.status;
-      setLoginChallenge(response.data?.challenge ?? loginChallenge);
+      const nextAccountLabel = response.data?.credential.accountDisplayName?.trim();
+      setLoginChallenge(status === "ready" ? null : (response.data?.challenge ?? loginChallenge));
+      if (nextAccountLabel) {
+        setAccountLabel(nextAccountLabel);
+      }
       setMessage(status === "ready" ? "番茄账号可用于发布。" : "账号状态刷新完成，请按状态继续处理。");
       await invalidateWorkspace();
     },
@@ -189,6 +194,7 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
       ? readPublishingLoginChallenge(selectedCredential.lastLoginChallengeJson)
       : null;
     const nextSignature = [
+      novelId,
       binding?.id ?? "",
       binding?.credentialId ?? "",
       binding?.bookId ?? "",
@@ -210,25 +216,70 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
     if (binding) {
       setBookId(binding.bookId);
       setBookTitle(binding.bookTitle);
+      const matchedKnownBook = workspace.knownBooks.find((item) =>
+        item.credentialId === binding.credentialId
+        && item.bookId === binding.bookId
+        && item.bookTitle === binding.bookTitle);
+      setSelectedKnownBookKey(matchedKnownBook?.key ?? "");
+    } else {
+      setBookId("");
+      setBookTitle("");
+      setSelectedKnownBookKey("");
     }
-    setLoginChallenge(latestChallenge);
-  }, [workspaceQuery.data?.data]);
+    setLoginChallenge(selectedCredential?.status === "ready" ? null : latestChallenge);
+  }, [novelId, workspaceQuery.data?.data]);
 
-  const handleSelectedCredentialIdChange = (nextCredentialId: string) => {
+  const syncSelectedCredential = (
+    nextCredentialId: string,
+    options: { preserveSelectedBook?: boolean } = {},
+  ) => {
     setCredentialId(nextCredentialId);
     const selectedCredential = workspaceQuery.data?.data?.credentials.find((credential) => credential.id === nextCredentialId);
-    setLoginChallenge(selectedCredential ? readPublishingLoginChallenge(selectedCredential.lastLoginChallengeJson) : null);
+    setLoginChallenge(
+      selectedCredential?.status === "ready"
+        ? null
+        : selectedCredential ? readPublishingLoginChallenge(selectedCredential.lastLoginChallengeJson) : null,
+    );
     if (selectedCredential?.label) {
       setAccountLabel(selectedCredential.label);
     }
+    if (!options.preserveSelectedBook) {
+      setSelectedKnownBookKey("");
+      setBookId("");
+      setBookTitle("");
+    }
+  };
+
+  const handleSelectedCredentialIdChange = (nextCredentialId: string) => {
+    syncSelectedCredential(nextCredentialId);
   };
 
   const workspace = workspaceQuery.data?.data;
+  const knownBooks = workspace?.knownBooks ?? [];
+
+  const handleSelectedKnownBookKeyChange = (nextKey: string) => {
+    setSelectedKnownBookKey(nextKey);
+    if (!nextKey) {
+      setBookId("");
+      setBookTitle("");
+      return;
+    }
+    const selectedBook = knownBooks.find((item) => item.key === nextKey);
+    if (!selectedBook) {
+      return;
+    }
+    setBookId(selectedBook.bookId);
+    setBookTitle(selectedBook.bookTitle);
+    if (selectedBook.credentialId !== credentialId) {
+      syncSelectedCredential(selectedBook.credentialId, { preserveSelectedBook: true });
+    }
+  };
 
   return {
     tab: {
       novelId,
       credentials: workspace?.credentials ?? [],
+      knownBooks,
       binding: workspace?.binding ?? null,
       activePlan: workspace?.activePlan ?? null,
       recentJobs: workspace?.recentJobs ?? [],
@@ -237,6 +288,8 @@ export function useNovelPublishingWorkspace(input: UseNovelPublishingWorkspaceIn
       onAccountLabelChange: setAccountLabel,
       selectedCredentialId: credentialId,
       onSelectedCredentialIdChange: handleSelectedCredentialIdChange,
+      selectedKnownBookKey,
+      onSelectedKnownBookKeyChange: handleSelectedKnownBookKeyChange,
       bookId,
       onBookIdChange: setBookId,
       bookTitle,

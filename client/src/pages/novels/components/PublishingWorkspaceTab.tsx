@@ -55,6 +55,7 @@ function formatDateTime(value: string | null | undefined): string {
 export default function PublishingWorkspaceTab(props: PublishingTabViewProps) {
   const {
     credentials,
+    knownBooks,
     binding,
     activePlan,
     recentJobs,
@@ -63,6 +64,8 @@ export default function PublishingWorkspaceTab(props: PublishingTabViewProps) {
     onAccountLabelChange,
     selectedCredentialId,
     onSelectedCredentialIdChange,
+    selectedKnownBookKey,
+    onSelectedKnownBookKeyChange,
     bookId,
     onBookIdChange,
     bookTitle,
@@ -93,6 +96,7 @@ export default function PublishingWorkspaceTab(props: PublishingTabViewProps) {
   const readyCredentialCount = credentials.filter((credential) => credential.status === "ready").length;
   const plannedCount = activePlan?.items.length ?? 0;
   const submittedCount = activePlan?.items.filter((item) => item.status !== "unpublished").length ?? 0;
+  const selectedCredential = credentials.find((credential) => credential.id === selectedCredentialId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -185,7 +189,7 @@ export default function PublishingWorkspaceTab(props: PublishingTabViewProps) {
                 ) : null}
               </div>
 
-              {latestChallenge ? (
+              {latestChallenge && selectedCredential?.status !== "ready" ? (
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                   <div className="text-sm font-medium">扫码登录</div>
                   {latestChallenge.qrCodeBase64Png ? (
@@ -231,19 +235,49 @@ export default function PublishingWorkspaceTab(props: PublishingTabViewProps) {
                 </select>
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground" htmlFor="publishing-book-id">
-                  平台书籍 ID
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="publishing-book-choice">
+                  已维护番茄书籍
                 </label>
-                <Input id="publishing-book-id" value={bookId} onChange={(event) => onBookIdChange(event.target.value)} />
+                <select
+                  id="publishing-book-choice"
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={selectedKnownBookKey}
+                  onChange={(event) => onSelectedKnownBookKeyChange(event.target.value)}
+                >
+                  <option value="">选择本地已维护书籍</option>
+                  {knownBooks
+                    .filter((item) => !selectedCredentialId || item.credentialId === selectedCredentialId)
+                    .map((item) => (
+                      <option key={item.key} value={item.key}>
+                        {item.bookTitle}
+                        {item.sourceNovelTitle ? ` · 来源《${item.sourceNovelTitle}》` : ""}
+                      </option>
+                    ))}
+                </select>
+                <div className="text-xs text-muted-foreground">
+                  系统会自动带出番茄书名和书籍编号；如果没有合适选项，再补充下方信息。
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground" htmlFor="publishing-book-id">
+                  番茄书籍编号
+                </label>
+                <Input
+                  id="publishing-book-id"
+                  value={bookId}
+                  onChange={(event) => onBookIdChange(event.target.value)}
+                  placeholder="优先通过上方书籍下拉自动带出"
+                />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-medium text-muted-foreground" htmlFor="publishing-book-title">
-                  平台书名
+                  番茄书名
                 </label>
                 <Input
                   id="publishing-book-title"
                   value={bookTitle}
                   onChange={(event) => onBookTitleChange(event.target.value)}
+                  placeholder="优先通过上方书籍下拉选择"
                 />
               </div>
               <Button type="button" onClick={onSaveBinding} disabled={isSavingBinding} className="w-full">

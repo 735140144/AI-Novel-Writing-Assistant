@@ -4,6 +4,7 @@ import type {
   PublishPlan,
   PublishPlanItem,
   PublishingCredentialLoginResponse,
+  PublishingKnownBookOption,
   PublishingLoginChallenge,
   PublishingPlatformCredential,
   PublishingResolvedSchedule,
@@ -218,5 +219,26 @@ export function mapPublishDispatchJob(row: {
     completedAt: toIso(row.completedAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function mapPublishingKnownBookOption(row: {
+  credentialId: string;
+  credentialLabel: string;
+  bookId: string;
+  bookTitle: string;
+  sourceNovelId?: string | null;
+  sourceNovelTitle?: string | null;
+  lastUsedAt?: Date | null;
+}): PublishingKnownBookOption {
+  return {
+    key: `${row.credentialId}:${row.bookId}`,
+    credentialId: row.credentialId,
+    credentialLabel: row.credentialLabel,
+    bookId: row.bookId,
+    bookTitle: row.bookTitle,
+    sourceNovelId: row.sourceNovelId ?? null,
+    sourceNovelTitle: row.sourceNovelTitle ?? null,
+    lastUsedAt: toIso(row.lastUsedAt),
   };
 }

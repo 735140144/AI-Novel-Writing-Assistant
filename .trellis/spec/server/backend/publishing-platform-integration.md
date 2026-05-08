@@ -95,6 +95,16 @@ qrPageUrl       do not return to the client when it points at the unauthenticate
 qrImageUrl      do not return to the client when it points at the unauthenticated dispatch service
 ```
 
+When credential validation returns `ready`, clear the stored QR challenge so the client stops rendering an expired QR block. If the dispatch response includes `accountDisplayName`, sync the local credential label to that display name.
+
+Known platform books for binding should come from local facts already owned by the user, such as existing novel bindings and recent dispatch jobs. Treat the raw external `bookId` as a persisted integration detail, not the primary user-facing concept.
+
+Plan regeneration must continue from local publishing progress before creating new items:
+
+* skip chapters already present in completed or still-active local publish plan items;
+* continue after the latest occupied `plannedPublishTime`, not from the original requested start date;
+* avoid creating duplicate future items for chapters already in draft, published, or still queued locally.
+
 AI-first schedule parsing:
 
 * Natural-language schedule instructions are product-facing intent recognition.
@@ -134,6 +144,9 @@ Required assertions for publishing changes:
 * `CREDENTIAL_RELOGIN_REQUIRED` maps to `relogin_required` during initial submission and job refresh.
 * Credential rows are scoped by user ownership in workspace reads, binding, validate, and submit flows.
 * Client-visible QR payloads do not include direct dispatch `qrPageUrl` or `qrImageUrl`.
+* Credential `ready` responses clear QR challenge state and sync account label from `accountDisplayName`.
+* Workspace known-book options merge local bindings and job history without duplicate dropdown entries.
+* Regenerated plans continue after the latest occupied publish time and skip locally occupied chapters.
 * PostgreSQL and SQLite migrations both include the publishing schema.
 
 ### 7. Wrong vs Correct

@@ -91,6 +91,17 @@ export interface NovelPlatformBinding {
   updatedAt: string;
 }
 
+export interface PublishingKnownBookOption {
+  key: string;
+  credentialId: string;
+  credentialLabel: string;
+  bookId: string;
+  bookTitle: string;
+  sourceNovelId?: string | null;
+  sourceNovelTitle?: string | null;
+  lastUsedAt?: string | null;
+}
+
 export interface PublishingStructuredSchedule {
   startDate?: string | null;
   publishTime: string;
@@ -168,6 +179,7 @@ export interface PublishDispatchJob {
 
 export interface PublishingWorkspaceResponse {
   credentials: PublishingPlatformCredential[];
+  knownBooks: PublishingKnownBookOption[];
   binding: NovelPlatformBinding | null;
   activePlan: PublishPlan | null;
   recentJobs: PublishDispatchJob[];

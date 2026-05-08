@@ -31,6 +31,13 @@ export interface PublishPlanTimeGroup<T extends { plannedPublishTime: string }> 
   items: T[];
 }
 
+export interface BuildPublishScheduleFromOffsetInput {
+  chapters: PublishingScheduleChapterInput[];
+  schedule: PublishingResolvedSchedule;
+  skipChapterIds?: Iterable<string>;
+  startIndexOffset?: number;
+}
+
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const PLANNED_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} ([01]\d|2[0-3]):[0-5]\d$/;
@@ -59,6 +66,14 @@ function addDays(dateString: string, days: number): string {
   const [year, month, day] = dateString.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1, day + days));
   return date.toISOString().slice(0, 10);
+}
+
+function diffDays(startDateString: string, endDateString: string): number {
+  assertDateString(startDateString, "起始日期");
+  assertDateString(endDateString, "结束日期");
+  const startTime = Date.parse(`${startDateString}T00:00:00.000Z`);
+  const endTime = Date.parse(`${endDateString}T00:00:00.000Z`);
+  return Math.floor((endTime - startTime) / (24 * 60 * 60 * 1000));
 }
 
 export function formatPlannedPublishTime(dateString: string, publishTime: string): string {
@@ -127,10 +142,21 @@ export function buildChapterPublishSchedule(input: {
   chapters: PublishingScheduleChapterInput[];
   schedule: PublishingResolvedSchedule;
 }): BuiltPublishPlanItem[] {
+  return buildChapterPublishScheduleFromOffset({
+    chapters: input.chapters,
+    schedule: input.schedule,
+  });
+}
+
+export function buildChapterPublishScheduleFromOffset(
+  input: BuildPublishScheduleFromOffsetInput,
+): BuiltPublishPlanItem[] {
+  const skipChapterIds = new Set(input.skipChapterIds ?? []);
   const selectedChapters = input.chapters
     .filter((chapter) =>
       chapter.order >= input.schedule.startChapterOrder
-      && chapter.order <= input.schedule.endChapterOrder)
+      && chapter.order <= input.schedule.endChapterOrder
+      && !skipChapterIds.has(chapter.id))
     .sort((left, right) => left.order - right.order);
 
   if (selectedChapters.length === 0) {
@@ -138,7 +164,8 @@ export function buildChapterPublishSchedule(input: {
   }
 
   return selectedChapters.map((chapter, index) => {
-    const dayOffset = Math.floor(index / input.schedule.chaptersPerDay);
+    const absoluteIndex = index + Math.max(0, Math.floor(input.startIndexOffset ?? 0));
+    const dayOffset = Math.floor(absoluteIndex / input.schedule.chaptersPerDay);
     const plannedDate = addDays(input.schedule.startDate, dayOffset);
     return {
       chapterId: chapter.id,
@@ -171,4 +198,53 @@ export function groupPublishPlanItemsByPlannedTime<T extends { plannedPublishTim
       plannedPublishTime,
       items: groupItems,
     }));
+}
+
+export function continueScheduleAfterTime(input: {
+  baseSchedule: PublishingResolvedSchedule;
+  occupiedPlannedTime?: string | null;
+  occupiedItemCount?: number;
+}): PublishingResolvedSchedule {
+  const occupiedTime = input.occupiedPlannedTime?.trim();
+  const occupiedCount = Math.max(0, Math.floor(input.occupiedItemCount ?? 0));
+  if (!occupiedTime || occupiedCount <= 0) {
+    return input.baseSchedule;
+  }
+  if (!PLANNED_TIME_PATTERN.test(occupiedTime)) {
+    throw new Error("已有计划时间格式无效。");
+  }
+  const [occupiedDate] = occupiedTime.split(" ");
+  const occupiedDayOffset = Math.floor((occupiedCount - 1) / input.baseSchedule.chaptersPerDay);
+  const derivedStartDate = addDays(occupiedDate, -occupiedDayOffset);
+  const startDate = input.baseSchedule.startDate > derivedStartDate
+    ? input.baseSchedule.startDate
+    : derivedStartDate;
+  return {
+    ...input.baseSchedule,
+    startDate,
+  };
+}
+
+export function resolveContinuationStartIndexOffset(input: {
+  schedule: PublishingResolvedSchedule;
+  occupiedPlannedTime?: string | null;
+}): number {
+  const occupiedTime = input.occupiedPlannedTime?.trim();
+  if (!occupiedTime) {
+    return 0;
+  }
+  if (!PLANNED_TIME_PATTERN.test(occupiedTime)) {
+    throw new Error("已有计划时间格式无效。");
+  }
+  const [occupiedDate, occupiedClock] = occupiedTime.split(" ");
+  if (!occupiedDate || !occupiedClock) {
+    throw new Error("已有计划时间格式无效。");
+  }
+  const daysFromStart = diffDays(input.schedule.startDate, occupiedDate);
+  if (daysFromStart < 0) {
+    return 0;
+  }
+  const needsNextWindow = occupiedClock >= input.schedule.publishTime;
+  const windowIndex = daysFromStart + (needsNextWindow ? 1 : 0);
+  return Math.max(0, windowIndex) * input.schedule.chaptersPerDay;
 }
