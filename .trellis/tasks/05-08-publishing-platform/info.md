@@ -4,7 +4,7 @@
 
 Implement a first publishing platform integration for Fanqie while keeping the local model platform-extensible.
 
-The product entry point should live in the novel workspace as a publishing step near the end of the writing flow. System settings can still contain lower-level configuration later, but the user should be able to bind, plan, submit, and inspect status from the novel.
+The product entry point should be a menu-level standalone publishing platform page at `/publishing`. The page should let the user choose a novel first, then bind, plan, submit, and inspect publishing status for that selected novel. The existing novel workspace publishing step remains available inside the workspace flow, but publishing must not be reintroduced as a novel list card action or desktop edit-header shortcut.
 
 ## External API Contract
 
@@ -79,16 +79,18 @@ Use existing auth and novel ownership middleware patterns. Avoid exposing creden
 
 ## Frontend Shape
 
-Add a publishing workspace view to the novel editor.
+Add a standalone publishing platform page that reuses the existing publishing workspace view for the selected novel. Keep the novel editor's internal publishing step available for workspace flow navigation.
 
-The view should show:
+The standalone view should show:
 
+* A novel selector or project list before the publishing controls.
 * Platform account binding status and QR login/refresh actions.
 * Novel platform book binding form with `bookId` and `bookTitle`.
 * Schedule instruction input and generated plan preview.
 * Chapter rows with planned publish time and status.
 * Submit to draft box and submit publish actions.
 * Job/status refresh and relogin recovery.
+* A clear create-novel action when the user has no novels yet.
 
 User-facing copy should describe the user task directly, such as “绑定番茄账号”, “生成发布时间表”, “提交到草稿箱”, and “刷新发布状态”.
 

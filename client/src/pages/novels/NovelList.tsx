@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import type { ProjectProgressStatus } from "@ai-novel/shared/types/novel";
 import { Link, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, Send } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { continueNovelWorkflow } from "@/api/novelWorkflow";
 import { deleteNovel, downloadNovelExport, getNovelList } from "@/api/novel";
 import { queryKeys } from "@/api/queryKeys";
@@ -453,17 +453,6 @@ export default function NovelList() {
                         <Link to={getTaskCenterLink(workflowTask.id)} onClick={stopCardClick}>任务中心</Link>
                       </Button>
                     ) : null}
-
-                    <Button asChild size="sm">
-                      <Link
-                        to={`/novels/${novel.id}/edit?stage=publishing`}
-                        onClick={stopCardClick}
-                        aria-label={`打开《${novel.title}》的发布平台`}
-                      >
-                        <Send className="h-4 w-4" aria-hidden="true" />
-                        发布平台
-                      </Link>
-                    </Button>
 
                     <Button asChild size="sm" variant="outline">
                       <Link to={`/novels/${novel.id}/preview`} onClick={stopCardClick}>

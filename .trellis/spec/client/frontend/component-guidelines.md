@@ -6,17 +6,7 @@
 
 ## Overview
 
-<!--
-Document your project's component conventions here.
-
-Questions to answer:
-- What component patterns do you use?
-- How are props defined?
-- How do you handle composition?
-- What accessibility standards apply?
--->
-
-(To be filled by the team)
+Frontend components should keep user entry points aligned with the workflow scope they control. A component that renders one repeated entity, such as a novel card, should not become the primary entry point for a cross-entity workflow unless the product requirement explicitly approves that placement.
 
 ---
 
@@ -25,6 +15,40 @@ Questions to answer:
 <!-- Standard structure of a component file -->
 
 (To be filled by the team)
+
+## Entry Point Placement
+
+### Convention: Menu-Level Entry Points for Cross-Novel Workflows
+
+**What**: Product capabilities that operate across novels, or that first require choosing a novel, should use a menu-level route and page. Examples include `/publishing`, which opens the publishing platform and then lets the user choose the novel to publish.
+
+**Why**: Repeated cards are for actions on that specific item. Putting a new workflow into every card makes the feature harder to find as a product-level capability, increases visual noise, and can conflict with user expectations when the workflow begins with choosing or managing a project.
+
+**Correct**:
+
+```tsx
+// Router and menu expose the feature as a standalone workflow.
+{ path: "publishing", element: <PublishingPlatformPage /> }
+{ to: "/publishing", label: "发布平台", icon: UploadCloud }
+```
+
+```tsx
+// The standalone page chooses a novel before rendering the workflow.
+<PublishingWorkspaceTab {...publishingTab} />
+```
+
+**Wrong**:
+
+```tsx
+// Do not add cross-novel workflow entry points to every novel card.
+<Link to={`/novels/${novel.id}/edit?stage=publishing`}>发布平台</Link>
+```
+
+**Tests Required**:
+
+- Assert the menu-level route exists in router, desktop navigation, and mobile navigation.
+- Assert repeated item views such as `NovelList.tsx` do not contain the forbidden card-level route.
+- Assert the standalone page reuses the workflow component instead of duplicating publishing controls.
 
 ---
 

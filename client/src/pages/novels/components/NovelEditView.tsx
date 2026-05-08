@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useIsMobileViewport } from "@/components/layout/mobile/useIsMobileViewport";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -173,15 +173,6 @@ function DesktopNovelEditView(props: NovelEditViewProps) {
                 </Button>
               ) : activeStepTakeoverEntry
             ) : null}
-
-            <Button
-              type="button"
-              variant={normalizedActiveTab === "publishing" ? "default" : "outline"}
-              onClick={() => props.onActiveTabChange("publishing")}
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-              发布平台
-            </Button>
 
             <Dialog open={isExportDialogOpen} onOpenChange={setIsExportDialogOpen}>
               <DialogTrigger asChild>
