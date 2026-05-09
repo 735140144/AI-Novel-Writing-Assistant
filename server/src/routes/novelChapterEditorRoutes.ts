@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AppError } from "../middleware/errorHandler";
 import { validate } from "../middleware/validate";
 import type { NovelService } from "../services/novel/NovelService";
+import { streamJsonWithKeepalive } from "./jsonKeepalive";
 
 interface RegisterNovelChapterEditorRoutesInput {
   router: Router;
@@ -53,15 +54,7 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
     "/:id/chapters/:chapterId/editor/ai-revision-preview",
     validate({ params: chapterParamsSchema, body: aiRevisionPreviewSchema }),
     async (req, res, next) => {
-      try {
-        const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
-        const data = await novelService.previewChapterAiRevision(id, chapterId, req.body as any);
-        res.status(200).json({
-          success: true,
-          data,
-          message: "Chapter editor AI revision preview generated.",
-        } satisfies ApiResponse<typeof data>);
-      } catch (error) {
+      const handleError = (error: unknown) => {
         if (forwardBusinessError(error, next)) {
           return;
         }
@@ -84,7 +77,26 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
           return;
         }
         next(error);
-      }
+      };
+
+      const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+      await streamJsonWithKeepalive({
+        res,
+        promise: novelService.previewChapterAiRevision(id, chapterId, req.body as any),
+        writeSuccess: (data, { chunked }) => {
+          const payload = {
+            success: true,
+            data,
+            message: "Chapter editor AI revision preview generated.",
+          } satisfies ApiResponse<typeof data>;
+          if (chunked) {
+            res.write(JSON.stringify(payload));
+            return;
+          }
+          res.status(200).json(payload);
+        },
+        next: handleError,
+      });
     },
   );
 
@@ -92,15 +104,7 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
     "/:id/chapters/:chapterId/editor/rewrite-preview",
     validate({ params: chapterParamsSchema, body: rewritePreviewSchema }),
     async (req, res, next) => {
-      try {
-        const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
-        const data = await novelService.previewChapterRewrite(id, chapterId, req.body as any);
-        res.status(200).json({
-          success: true,
-          data,
-          message: "Chapter editor rewrite preview generated.",
-        } satisfies ApiResponse<typeof data>);
-      } catch (error) {
+      const handleError = (error: unknown) => {
         if (forwardBusinessError(error, next)) {
           return;
         }
@@ -120,7 +124,26 @@ export function registerNovelChapterEditorRoutes(input: RegisterNovelChapterEdit
           return;
         }
         next(error);
-      }
+      };
+
+      const { id, chapterId } = req.params as z.infer<typeof chapterParamsSchema>;
+      await streamJsonWithKeepalive({
+        res,
+        promise: novelService.previewChapterRewrite(id, chapterId, req.body as any),
+        writeSuccess: (data, { chunked }) => {
+          const payload = {
+            success: true,
+            data,
+            message: "Chapter editor rewrite preview generated.",
+          } satisfies ApiResponse<typeof data>;
+          if (chunked) {
+            res.write(JSON.stringify(payload));
+            return;
+          }
+          res.status(200).json(payload);
+        },
+        next: handleError,
+      });
     },
   );
 }

@@ -536,3 +536,123 @@ test("GET workspace and POST ai-revision-preview routes return the new editor pa
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
   }
 });
+
+test("POST ai-revision-preview starts sending keepalive bytes before a slow preview completes", async () => {
+  const originalRevisionMethod = NovelService.prototype.previewChapterAiRevision;
+  const previousInitialDelay = process.env.JSON_KEEPALIVE_INITIAL_DELAY_MS;
+  const previousIntervalDelay = process.env.JSON_KEEPALIVE_INTERVAL_MS;
+  process.env.JSON_KEEPALIVE_INITIAL_DELAY_MS = "10";
+  process.env.JSON_KEEPALIVE_INTERVAL_MS = "10";
+  NovelService.prototype.previewChapterAiRevision = async (_novelId, _chapterId, payload) => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return {
+      sessionId: "session-keepalive",
+      scope: payload.scope,
+      resolvedIntent: {
+        editGoal: "更压抑",
+        toneShift: "更克制",
+        paceAdjustment: "更紧",
+        conflictAdjustment: "更早浮出",
+        emotionAdjustment: "更压抑",
+        mustPreserve: ["保留当前事实"],
+        mustAvoid: ["不要破坏人设"],
+        strength: "medium",
+        reasoningSummary: "按用户要求执行。",
+      },
+      targetRange: payload.selection ?? { from: 0, to: 11, text: "alpha\n\nbeta" },
+      macroAlignmentNote: "与本章/本卷目标保持一致。",
+      candidates: [{
+        id: "candidate-1",
+        label: "更压抑",
+        content: "alpha revised",
+        summary: "让压抑感更早浮出。",
+        rationale: "通过压缩和重心前移，让压迫更早可感。",
+        riskNotes: ["注意下一段承接。"],
+        semanticTags: ["emotion"],
+        diffChunks: [
+          { id: "chunk-1", type: "delete", text: "alpha" },
+          { id: "chunk-2", type: "insert", text: "alpha revised" },
+        ],
+      }, {
+        id: "candidate-2",
+        label: "更克制",
+        content: "alpha restrained",
+        summary: "保留信息但收紧表达。",
+        rationale: "把表达压得更稳，不改变事实。",
+        semanticTags: ["voice"],
+        diffChunks: [
+          { id: "chunk-1", type: "delete", text: "alpha" },
+          { id: "chunk-2", type: "insert", text: "alpha restrained" },
+        ],
+      }],
+      activeCandidateId: "candidate-1",
+    };
+  };
+
+  const app = createApp();
+  const server = http.createServer(app);
+  const port = await listen(server);
+
+  try {
+    const responseResult = await Promise.race([
+      fetch(`http://127.0.0.1:${port}/api/novels/novel-1/chapters/chapter-1/editor/ai-revision-preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source: "freeform",
+          scope: "chapter",
+          instruction: "把这一章整体改得更压抑，但别改剧情事实。",
+          contentSnapshot: "alpha\n\nbeta",
+          constraints: {
+            keepFacts: true,
+            keepPov: true,
+            noUnauthorizedSetting: true,
+            preserveCoreInfo: true,
+          },
+        }),
+      }).then((response) => ({ kind: "response", response })),
+      new Promise((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 40)),
+    ]);
+
+    assert.equal(responseResult.kind, "response");
+    const response = responseResult.response;
+    assert.equal(response.status, 200);
+    const reader = response.body.getReader();
+
+    const firstChunkResult = await Promise.race([
+      reader.read().then((value) => ({ kind: "chunk", value })),
+      new Promise((resolve) => setTimeout(() => resolve({ kind: "timeout" }), 40)),
+    ]);
+
+    assert.equal(firstChunkResult.kind, "chunk");
+    assert.equal(firstChunkResult.value.done, false);
+    assert.ok(String(Buffer.from(firstChunkResult.value.value)).trim().length === 0);
+
+    let fullText = Buffer.from(firstChunkResult.value.value).toString("utf8");
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      fullText += Buffer.from(value).toString("utf8");
+    }
+    const payload = JSON.parse(fullText);
+    assert.equal(payload.success, true);
+    assert.equal(payload.data.candidates.length, 2);
+  } finally {
+    if (previousInitialDelay === undefined) {
+      delete process.env.JSON_KEEPALIVE_INITIAL_DELAY_MS;
+    } else {
+      process.env.JSON_KEEPALIVE_INITIAL_DELAY_MS = previousInitialDelay;
+    }
+    if (previousIntervalDelay === undefined) {
+      delete process.env.JSON_KEEPALIVE_INTERVAL_MS;
+    } else {
+      process.env.JSON_KEEPALIVE_INTERVAL_MS = previousIntervalDelay;
+    }
+    NovelService.prototype.previewChapterAiRevision = originalRevisionMethod;
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
