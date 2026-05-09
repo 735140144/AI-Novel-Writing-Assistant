@@ -89,6 +89,10 @@ function latestJob(jobs: PublishDispatchJob[]): PublishDispatchJob | null {
   return jobs[0] ?? null;
 }
 
+function isCompletedPlanItem(status: PublishItemStatus): boolean {
+  return status === "draft_box" || status === "published";
+}
+
 export default function PublishingWorkDetailPage() {
   const params = useParams<{ bindingId: string }>();
   const bindingId = params.bindingId ?? "";
@@ -120,6 +124,14 @@ export default function PublishingWorkDetailPage() {
   const canGeneratePlan = Boolean(remoteProgress);
   const activePlan = detail?.activePlan ?? null;
   const latestDispatchJob = latestJob(detail?.recentJobs ?? []);
+  const pendingPlanItems = useMemo(
+    () => activePlan?.items.filter((item) => !isCompletedPlanItem(item.status)) ?? [],
+    [activePlan],
+  );
+  const completedPlanItems = useMemo(
+    () => activePlan?.items.filter((item) => isCompletedPlanItem(item.status)) ?? [],
+    [activePlan],
+  );
 
   useEffect(() => {
     setChapterCountText(String(recommendedChapterCount));
@@ -382,6 +394,11 @@ export default function PublishingWorkDetailPage() {
                 ? `${activePlan.resolvedSchedule.startDate} 起，每天 ${activePlan.resolvedSchedule.publishTime} 提交 ${activePlan.resolvedSchedule.chaptersPerDay} 章`
                 : "生成发布时间表后，系统会按顺序准备逐章提交列表。"}
             </p>
+            {activePlan ? (
+              <p className="text-xs text-muted-foreground">
+                当前计划共 {activePlan.items.length} 章，其中待提交 {pendingPlanItems.length} 章，已在平台存在 {completedPlanItems.length} 章。
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {activePlan ? <Badge variant={statusVariant(activePlan.status)}>{planStatusLabels[activePlan.status]}</Badge> : null}
@@ -406,29 +423,71 @@ export default function PublishingWorkDetailPage() {
         </div>
 
         {activePlan?.items.length ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-muted/40 text-left">
-                <tr>
-                  <th className="px-4 py-3 font-medium">章节</th>
-                  <th className="px-4 py-3 font-medium">计划发布时间</th>
-                  <th className="px-4 py-3 font-medium">状态</th>
-                  <th className="px-4 py-3 font-medium">最近错误</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activePlan.items.map((item) => (
-                  <tr key={item.id} className="border-t">
-                    <td className="px-4 py-3">第 {item.chapterOrder} 章 · {item.chapterTitle}</td>
-                    <td className="px-4 py-3 font-mono text-xs">{item.plannedPublishTime}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={statusVariant(item.status)}>{itemStatusLabels[item.status]}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{item.lastError || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {pendingPlanItems.length ? (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">待提交章节</div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-muted/40 text-left">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">章节</th>
+                        <th className="px-4 py-3 font-medium">计划发布时间</th>
+                        <th className="px-4 py-3 font-medium">状态</th>
+                        <th className="px-4 py-3 font-medium">最近错误</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingPlanItems.map((item) => (
+                        <tr key={item.id} className="border-t">
+                          <td className="px-4 py-3">第 {item.chapterOrder} 章 · {item.chapterTitle}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{item.plannedPublishTime}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={statusVariant(item.status)}>{itemStatusLabels[item.status]}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{item.lastError || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                当前计划中没有待提交章节。
+              </div>
+            )}
+
+            {completedPlanItems.length ? (
+              <div className="space-y-2">
+                <div className="text-sm font-medium">已在平台存在的章节</div>
+                <div className="text-xs text-muted-foreground">这些章节已同步为草稿箱或已发布状态，不会再次参与本次提交。</div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-muted/40 text-left">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">章节</th>
+                        <th className="px-4 py-3 font-medium">计划发布时间</th>
+                        <th className="px-4 py-3 font-medium">状态</th>
+                        <th className="px-4 py-3 font-medium">最近错误</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {completedPlanItems.map((item) => (
+                        <tr key={item.id} className="border-t">
+                          <td className="px-4 py-3">第 {item.chapterOrder} 章 · {item.chapterTitle}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{item.plannedPublishTime}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={statusVariant(item.status)}>{itemStatusLabels[item.status]}</Badge>
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground">{item.lastError || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">

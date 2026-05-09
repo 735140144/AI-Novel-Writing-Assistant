@@ -21,6 +21,11 @@ const {
 } = require("../dist/services/publishing/publishingMappers.js");
 const { countPublishingReadyChapters } = require("../dist/services/publishing/publishingChapterContent.js");
 const { getEffectiveRemoteProgressRows } = require("../dist/services/publishing/publishingRemoteProgress.js");
+const {
+  hasPlanSubmissionEvidence,
+  hasBlockingPlanSubmissionEvidence,
+} = require("../dist/services/publishing/publishingPlanDeletion.js");
+const { shouldSubmitPlanItem } = require("../dist/services/publishing/publishingPlanSubmission.js");
 const { getRegisteredPromptAsset } = require("../dist/prompting/registry.js");
 
 test("publishing schedule assigns two chapters to each daily planned time", () => {
@@ -284,6 +289,114 @@ test("publishing credential ready state clears QR challenge and syncs account la
     id: "challenge-1",
     qrCodeBase64Png: "base64",
   });
+});
+
+test("publishing synced published items without local submission evidence can be cleared", () => {
+  assert.equal(
+    hasPlanSubmissionEvidence({
+      status: "published",
+      dispatchJobId: null,
+      externalJobId: null,
+      submittedAt: null,
+      dispatchStatus: null,
+    }),
+    false,
+  );
+  assert.equal(
+    hasPlanSubmissionEvidence({
+      status: "draft_box",
+      dispatchJobId: null,
+      externalJobId: null,
+      submittedAt: null,
+      dispatchStatus: null,
+    }),
+    false,
+  );
+  assert.equal(
+    hasBlockingPlanSubmissionEvidence({
+      items: [
+        {
+          status: "published",
+          dispatchJobId: null,
+          externalJobId: null,
+          submittedAt: null,
+          dispatchStatus: null,
+        },
+      ],
+      jobs: [],
+    }),
+    false,
+  );
+});
+
+test("publishing keeps clear blocked when local submission evidence exists", () => {
+  assert.equal(
+    hasPlanSubmissionEvidence({
+      status: "published",
+      dispatchJobId: "job-1",
+      externalJobId: null,
+      submittedAt: null,
+      dispatchStatus: null,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanSubmissionEvidence({
+      status: "draft_box",
+      dispatchJobId: null,
+      externalJobId: "external-1",
+      submittedAt: null,
+      dispatchStatus: null,
+    }),
+    true,
+  );
+  assert.equal(
+    hasPlanSubmissionEvidence({
+      status: "submitting",
+      dispatchJobId: null,
+      externalJobId: null,
+      submittedAt: "2026-05-09T08:00:00.000Z",
+      dispatchStatus: "queued",
+    }),
+    true,
+  );
+  assert.equal(
+    hasBlockingPlanSubmissionEvidence({
+      items: [
+        {
+          status: "published",
+          dispatchJobId: "job-1",
+          externalJobId: null,
+          submittedAt: null,
+          dispatchStatus: null,
+        },
+      ],
+      jobs: [],
+    }),
+    true,
+  );
+  assert.equal(
+    hasBlockingPlanSubmissionEvidence({
+      items: [],
+      jobs: [
+        {
+          status: "completed",
+          externalJobId: null,
+          submittedAt: null,
+        },
+      ],
+    }),
+    true,
+  );
+});
+
+test("publishing only submits plan items that still need local processing", () => {
+  assert.equal(shouldSubmitPlanItem({ status: "unpublished" }), true);
+  assert.equal(shouldSubmitPlanItem({ status: "failed" }), true);
+  assert.equal(shouldSubmitPlanItem({ status: "relogin_required" }), true);
+  assert.equal(shouldSubmitPlanItem({ status: "submitting" }), false);
+  assert.equal(shouldSubmitPlanItem({ status: "draft_box" }), false);
+  assert.equal(shouldSubmitPlanItem({ status: "published" }), false);
 });
 
 test("publishing known-book option key is stable for dropdown selection and dedupe", () => {

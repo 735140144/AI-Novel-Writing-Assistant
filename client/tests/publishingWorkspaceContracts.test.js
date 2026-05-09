@@ -112,6 +112,9 @@ test("publishing work detail page requires remote sync before first plan generat
   assert.match(publishingDetailPage, /开始发布/);
   assert.match(publishingDetailPage, /清除当前计划/);
   assert.match(publishingDetailPage, /发布详情/);
+  assert.match(publishingDetailPage, /待提交章节/);
+  assert.match(publishingDetailPage, /已在平台存在的章节/);
+  assert.match(publishingDetailPage, /不会再次参与本次提交/);
   assert.match(publishingDetailPage, /return Math\.max\(remoteProgress\.publishedChapters\.length, maxOrder\)/);
   assert.match(publishingDetailPage, /return hasRemoteProgress \? remotePublishedCount : localPublished/);
 });

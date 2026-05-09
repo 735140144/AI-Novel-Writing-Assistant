@@ -105,6 +105,19 @@ Plan regeneration must continue from local publishing progress before creating n
 * continue after the latest occupied `plannedPublishTime`, not from the original requested start date;
 * avoid creating duplicate future items for chapters already in draft, published, or still queued locally.
 
+Remote progress reconciliation may mark local plan items as `draft_box` or `published` even when those items were never submitted by the current local plan. Treat those synchronized states as remote reflections, not as proof of local submission.
+
+Plan clearing must distinguish remote-synced completed states from true local submission evidence:
+
+* allow clearing a local plan when items only became `draft_box` or `published` through remote sync reconciliation and there is no local submission evidence such as `dispatchJobId`, `externalJobId`, item `submittedAt`, or a running/completed dispatch job;
+* keep blocking clear when the plan is still submitting or there is real local dispatch evidence.
+
+Plan submission must only submit chapters that still need local processing:
+
+* submit `unpublished`, `failed`, or `relogin_required` items in chapter order;
+* skip plan items already marked `draft_box` or `published`, including items synchronized from the remote platform;
+* surface completed remote-synced items separately in the client so they do not look like pending local submissions.
+
 AI-first schedule parsing:
 
 * Natural-language schedule instructions are product-facing intent recognition.
@@ -125,12 +138,16 @@ AI-first schedule parsing:
 | Dispatch job status is `failed` with relogin error | Map affected items to `relogin_required`, not generic `failed` |
 | Dispatch job status is generic `failed` | Mark affected items `failed` and preserve the dispatch error summary |
 | Dispatch QR response contains direct URLs | Strip direct dispatch URLs before returning data to the client |
+| Plan item is `draft_box` or `published` only because of remote sync | Do not treat it as local submission evidence when deciding whether the local plan can be cleared |
+| Submit request contains plan items already synchronized as remote draft/published | Skip those items and only submit chapters that still require local processing |
 
 ### 5. Good/Base/Bad Cases
 
 Good: a plan with chapters 1-2 at `2026-05-09 08:00` and chapters 3-4 at `2026-05-10 08:00` creates two dispatch jobs, each with the correct `timerTime` and chapter subset.
 
 Base: a draft submission completes with dispatch status `completed`; affected plan items become `draft_box`, while the dispatch job keeps its raw status/result for telemetry.
+
+Base: remote sync marks chapter 180 as `published` in the current plan because the platform already contains it, but the item has no `dispatchJobId` or `submittedAt`; clearing the local plan remains allowed and the chapter is excluded from the next local submission batch.
 
 Bad: a user supplies another user's credential ID when binding a novel. The service rejects the request because credential ownership is checked independently from novel ownership.
 
@@ -147,6 +164,8 @@ Required assertions for publishing changes:
 * Credential `ready` responses clear QR challenge state and sync account label from `accountDisplayName`.
 * Workspace known-book options merge local bindings and job history without duplicate dropdown entries.
 * Regenerated plans continue after the latest occupied publish time and skip locally occupied chapters.
+* Remote-synced `draft_box` or `published` plan items do not block local plan clearing unless local submission evidence exists.
+* Plan submission skips chapters already synchronized as remote draft/published items and only submits chapters still pending local processing.
 * PostgreSQL and SQLite migrations both include the publishing schema.
 
 ### 7. Wrong vs Correct
