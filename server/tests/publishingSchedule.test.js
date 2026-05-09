@@ -12,6 +12,7 @@ const {
 } = require("../dist/services/publishing/publishingSchedule.js");
 const {
   mapDispatchJobStatusToItemStatus,
+  resolveDispatchErrorHttpStatus,
   resolveDispatchErrorItemStatus,
 } = require("../dist/services/publishing/publishingStatus.js");
 const {
@@ -212,6 +213,32 @@ test("dispatch relogin errors map to relogin_required item state", () => {
     "relogin_required",
   );
   assert.equal(resolveDispatchErrorItemStatus({ error: { code: "VALIDATION_ERROR" } }), "failed");
+});
+
+test("dispatch relogin errors surface as conflict instead of generic 500", () => {
+  assert.equal(
+    resolveDispatchErrorHttpStatus({
+      upstreamStatus: 500,
+      value: {
+        error: {
+          code: "CREDENTIAL_RELOGIN_REQUIRED",
+          message: "Credential is not ready for publishing",
+        },
+        relogin: {
+          action: "bootstrap_login",
+          credentialUuid: "credential-1",
+        },
+      },
+    }),
+    409,
+  );
+  assert.equal(
+    resolveDispatchErrorHttpStatus({
+      upstreamStatus: 400,
+      value: { error: { code: "VALIDATION_ERROR" } },
+    }),
+    400,
+  );
 });
 
 test("publishing credential ready state clears QR challenge and syncs account label", () => {

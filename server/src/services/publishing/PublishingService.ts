@@ -52,7 +52,11 @@ import {
   groupPublishPlanItemsByPlannedTime,
   resolveContinuationStartIndexOffset,
 } from "./publishingSchedule";
-import { mapDispatchJobStatusToItemStatus, resolveDispatchErrorItemStatus } from "./publishingStatus";
+import {
+  mapDispatchJobStatusToItemStatus,
+  resolveDispatchErrorHttpStatus,
+  resolveDispatchErrorItemStatus,
+} from "./publishingStatus";
 import {
   mapCredentialLoginResponse,
   mapNovelPlatformBinding,
@@ -443,11 +447,40 @@ export class PublishingService {
       throw new AppError("小说发布绑定不存在。", 404);
     }
 
-    const progress = await this.dispatchClient.getBookProgress({
-      credentialUuid: binding.credential.credentialUuid,
-      bookId: binding.bookId,
-      bookTitle: binding.bookTitle,
-    });
+    let progress;
+    try {
+      progress = await this.dispatchClient.getBookProgress({
+        credentialUuid: binding.credential.credentialUuid,
+        bookId: binding.bookId,
+        bookTitle: binding.bookTitle,
+      });
+    } catch (error) {
+      if (error instanceof FanqieDispatchApiError) {
+        if (resolveDispatchErrorItemStatus(error.payload) === "relogin_required") {
+          await prisma.publishingPlatformCredential.update({
+            where: { id: binding.credential.id },
+            data: { status: PublishingCredentialStatus.expired },
+          });
+          throw new AppError(
+            "当前发布账号需要重新扫码后才能同步远端进度。请前往账号管理重新扫码后重试。",
+            resolveDispatchErrorHttpStatus({
+              upstreamStatus: error.status,
+              value: error.payload,
+            }),
+            error.payload,
+          );
+        }
+        throw new AppError(
+          error.message,
+          resolveDispatchErrorHttpStatus({
+            upstreamStatus: error.status,
+            value: error.payload,
+          }),
+          error.payload,
+        );
+      }
+      throw error;
+    }
     const syncedAt = new Date().toISOString();
     const snapshot = createPublishingRemoteProgressSnapshot(progress, syncedAt);
 

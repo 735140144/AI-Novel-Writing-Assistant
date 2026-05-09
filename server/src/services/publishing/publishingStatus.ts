@@ -47,6 +47,16 @@ export function resolveDispatchErrorItemStatus(value: unknown): PublishItemStatu
   return isCredentialReloginError(value) ? "relogin_required" : "failed";
 }
 
+export function resolveDispatchErrorHttpStatus(input: {
+  upstreamStatus: number;
+  value: unknown;
+}): number {
+  if (isCredentialReloginError(input.value)) {
+    return 409;
+  }
+  return input.upstreamStatus >= 400 && input.upstreamStatus < 600 ? input.upstreamStatus : 502;
+}
+
 export function mapDispatchJobStatusToItemStatus(input: {
   mode: PublishMode;
   dispatchStatus: PublishDispatchJobStatus;

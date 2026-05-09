@@ -120,8 +120,14 @@ export default function PublishingWorkDetailPage() {
       toast.success("远端进度已同步。");
       await invalidateDetail();
     },
-    onError: (error) => {
+    onError: async (error) => {
       toast.error(error instanceof Error ? error.message : "远端进度同步失败。");
+      const status = typeof error === "object" && error && "status" in error
+        ? Number((error as { status?: unknown }).status)
+        : null;
+      if (status === 409) {
+        await invalidateDetail();
+      }
     },
   });
 
