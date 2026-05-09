@@ -67,9 +67,6 @@ test("mobile more menu contains all non-primary registered pages", () => {
   assert.deepEqual(
     morePaths,
     [
-      "/publishing",
-      "/publishing/accounts",
-      "/publishing/works",
       "/book-analysis",
       "/auto-director/follow-ups",
       "/chat-legacy",
@@ -79,6 +76,8 @@ test("mobile more menu contains all non-primary registered pages", () => {
       "/titles",
       "/style-engine",
       "/base-characters",
+      "/publishing/accounts",
+      "/publishing/works",
       "/worlds",
       "/worlds/generator",
       "/settings/model-routes",

@@ -27,10 +27,10 @@ export const MOBILE_ROUTE_PATTERNS: MobileRoutePattern[] = [
   { key: "novel-preview", pattern: /^\/novels\/[^/]+\/preview\/?$/, title: "小说预览", group: "novels" },
   { key: "novel-edit", pattern: /^\/novels\/[^/]+\/edit\/?$/, title: "小说工作区", group: "novels" },
   { key: "chapter-edit", pattern: /^\/novels\/[^/]+\/chapters\/[^/]+\/?$/, title: "章节正文", group: "novels" },
-  { key: "publishing", pattern: /^\/publishing\/?$/, title: "发布", group: "creation" },
-  { key: "publishing-accounts", pattern: /^\/publishing\/accounts\/?$/, title: "账号管理", group: "creation" },
-  { key: "publishing-works", pattern: /^\/publishing\/works\/?$/, title: "作品列表", group: "creation" },
-  { key: "publishing-work-detail", pattern: /^\/publishing\/works\/[^/]+\/?$/, title: "发布详情", group: "creation" },
+  { key: "publishing", pattern: /^\/publishing\/?$/, title: "发布", group: "more" },
+  { key: "publishing-accounts", pattern: /^\/publishing\/accounts\/?$/, title: "账号管理", group: "more" },
+  { key: "publishing-works", pattern: /^\/publishing\/works\/?$/, title: "作品列表", group: "more" },
+  { key: "publishing-work-detail", pattern: /^\/publishing\/works\/[^/]+\/?$/, title: "发布详情", group: "more" },
   { key: "creative-hub", pattern: /^\/creative-hub\/?$/, title: "创作中枢", group: "creation" },
   { key: "chat-legacy", pattern: /^\/chat-legacy\/?$/, title: "旧版聊天", group: "creation" },
   { key: "book-analysis", pattern: /^\/book-analysis\/?$/, title: "拆书", group: "creation" },
@@ -64,9 +64,6 @@ const moreNavGroups: MobileNavGroup[] = [
   {
     title: "创作辅助",
     items: [
-      { key: "publishing", label: "发布平台", to: "/publishing", group: "creation" },
-      { key: "publishing-accounts", label: "账号管理", to: "/publishing/accounts", group: "creation" },
-      { key: "publishing-works", label: "作品列表", to: "/publishing/works", group: "creation" },
       { key: "book-analysis", label: "拆书", to: "/book-analysis", group: "creation" },
       { key: "auto-director-follow-ups", label: "导演跟进", to: "/auto-director/follow-ups", group: "tasks" },
       { key: "chat-legacy", label: "旧版聊天", to: "/chat-legacy", group: "creation" },
@@ -81,6 +78,13 @@ const moreNavGroups: MobileNavGroup[] = [
       { key: "titles", label: "标题工坊", to: "/titles", group: "more" },
       { key: "style-engine", label: "写法引擎", to: "/style-engine", group: "more" },
       { key: "base-characters", label: "基础角色", to: "/base-characters", group: "more" },
+    ],
+  },
+  {
+    title: "发布",
+    items: [
+      { key: "publishing-accounts", label: "账号管理", to: "/publishing/accounts", group: "more" },
+      { key: "publishing-works", label: "作品列表", to: "/publishing/works", group: "more" },
     ],
   },
   {

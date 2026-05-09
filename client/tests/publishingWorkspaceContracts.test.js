@@ -50,12 +50,12 @@ test("publishing module is split into accounts, works, and work detail routes", 
 });
 
 test("publishing navigation is menu-level on desktop and mobile", () => {
-  assert.match(sidebar, /\{ to: "\/publishing", label: "发布", icon: [A-Za-z0-9_]+ \}/);
+  assert.match(sidebar, /title: "发布",\n\s*items: \[/);
   assert.match(sidebar, /\{ to: "\/publishing\/accounts", label: "账号管理", icon: [A-Za-z0-9_]+ \}/);
   assert.match(sidebar, /\{ to: "\/publishing\/works", label: "作品列表", icon: [A-Za-z0-9_]+ \}/);
-  assert.match(mobileNavigation, /key: "publishing"[\s\S]{0,120}title: "发布"[\s\S]{0,120}group: "creation"/);
-  assert.match(mobileNavigation, /\{ key: "publishing-accounts", label: "账号管理", to: "\/publishing\/accounts", group: "creation" \}/);
-  assert.match(mobileNavigation, /\{ key: "publishing-works", label: "作品列表", to: "\/publishing\/works", group: "creation" \}/);
+  assert.doesNotMatch(sidebar, /\{ to: "\/publishing", label: "发布", icon: [A-Za-z0-9_]+ \}/);
+  assert.match(mobileNavigation, /key: "publishing"[\s\S]{0,120}title: "发布"[\s\S]{0,120}group: "more"/);
+  assert.match(mobileNavigation, /title: "发布",\n\s*items: \[\n\s*\{ key: "publishing-accounts", label: "账号管理", to: "\/publishing\/accounts", group: "more" \},\n\s*\{ key: "publishing-works", label: "作品列表", to: "\/publishing\/works", group: "more" \},/);
 });
 
 test("publishing landing page redirects users into the split module", () => {
