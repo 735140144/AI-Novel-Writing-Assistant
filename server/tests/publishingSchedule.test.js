@@ -14,6 +14,7 @@ const {
 } = require("../dist/services/publishing/publishingSchedule.js");
 const {
   mapDispatchJobStatusToItemStatus,
+  reconcileDispatchJobStatusFromRemoteItemStatus,
   resolveDispatchErrorHttpStatus,
   resolveDispatchErrorItemStatus,
 } = require("../dist/services/publishing/publishingStatus.js");
@@ -299,6 +300,37 @@ test("dispatch status mapping keeps draft and publish completion separate", () =
       },
     }),
     "relogin_required",
+  );
+});
+
+test("remote publishing sync upgrades stale submitting task statuses to completed when item is already completed", () => {
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "queued",
+      itemStatus: "published",
+    }),
+    "completed",
+  );
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "running",
+      itemStatus: "draft_box",
+    }),
+    "completed",
+  );
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "failed",
+      itemStatus: "published",
+    }),
+    "failed",
+  );
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "completed",
+      itemStatus: "published",
+    }),
+    "completed",
   );
 });
 

@@ -10,6 +10,11 @@ const SUBMITTING_DISPATCH_STATUSES = new Set<PublishDispatchJobStatus>([
   "running",
 ]);
 
+const COMPLETED_ITEM_STATUSES = new Set<PublishItemStatus>([
+  "draft_box",
+  "published",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -72,4 +77,17 @@ export function mapDispatchJobStatusToItemStatus(input: {
     return "published";
   }
   return "draft_box";
+}
+
+export function reconcileDispatchJobStatusFromRemoteItemStatus(input: {
+  dispatchStatus: PublishDispatchJobStatus | null | undefined;
+  itemStatus: PublishItemStatus;
+}): PublishDispatchJobStatus | null | undefined {
+  if (!input.dispatchStatus) {
+    return input.dispatchStatus;
+  }
+  if (COMPLETED_ITEM_STATUSES.has(input.itemStatus) && SUBMITTING_DISPATCH_STATUSES.has(input.dispatchStatus)) {
+    return "completed";
+  }
+  return input.dispatchStatus;
 }

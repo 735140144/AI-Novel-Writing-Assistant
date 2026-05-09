@@ -58,6 +58,7 @@ import {
 import { buildPublishOptions } from "./publishingDispatchPayloads";
 import {
   mapDispatchJobStatusToItemStatus,
+  reconcileDispatchJobStatusFromRemoteItemStatus,
   resolveDispatchErrorHttpStatus,
   resolveDispatchErrorItemStatus,
 } from "./publishingStatus";
@@ -395,6 +396,8 @@ export class PublishingService {
         chapterOrder: true,
         chapterTitle: true,
         status: true,
+        dispatchJobId: true,
+        dispatchStatus: true,
       },
     });
 
@@ -420,13 +423,34 @@ export class PublishingService {
       }
 
       touchedPlanIds.add(item.planId);
-      await prisma.publishPlanItem.update({
-        where: { id: item.id },
-        data: {
-          status: nextStatus,
-          lastError: null,
-          publishedAt: nextStatus === PublishItemStatus.published ? new Date() : item.status === PublishItemStatus.published ? undefined : null,
-        },
+      const reconciledDispatchStatus = reconcileDispatchJobStatusFromRemoteItemStatus({
+        dispatchStatus: item.dispatchStatus,
+        itemStatus: nextStatus,
+      });
+      await prisma.$transaction(async (tx) => {
+        if (
+          item.dispatchJobId
+          && reconciledDispatchStatus
+          && reconciledDispatchStatus !== item.dispatchStatus
+        ) {
+          await tx.publishDispatchJob.update({
+            where: { id: item.dispatchJobId },
+            data: {
+              status: reconciledDispatchStatus,
+              lastError: null,
+              completedAt: reconciledDispatchStatus === PublishDispatchJobStatus.completed ? new Date() : undefined,
+            },
+          });
+        }
+        await tx.publishPlanItem.update({
+          where: { id: item.id },
+          data: {
+            status: nextStatus,
+            dispatchStatus: reconciledDispatchStatus,
+            lastError: null,
+            publishedAt: nextStatus === PublishItemStatus.published ? new Date() : item.status === PublishItemStatus.published ? undefined : null,
+          },
+        });
       });
     }
 
