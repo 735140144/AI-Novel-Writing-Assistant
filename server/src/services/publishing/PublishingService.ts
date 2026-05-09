@@ -46,6 +46,7 @@ import {
   getEffectiveRemoteProgressRows,
   parsePublishingRemoteProgressSnapshot,
 } from "./publishingRemoteProgress";
+import { countPublishingReadyChapters, hasPublishingChapterContent } from "./publishingChapterContent";
 import {
   buildChapterPublishScheduleFromOffset,
   continueScheduleAfterTime,
@@ -320,6 +321,7 @@ export class PublishingService {
                 id: true,
                 generationState: true,
                 chapterStatus: true,
+                content: true,
               },
             },
           },
@@ -356,10 +358,7 @@ export class PublishingService {
       }),
     ]);
 
-    const completedChapterCount = binding.novel.chapters.filter((chapter) =>
-      chapter.chapterStatus === "completed"
-      || chapter.generationState === "approved"
-      || chapter.generationState === "published").length;
+    const completedChapterCount = countPublishingReadyChapters(binding.novel.chapters);
 
     return {
       binding: mapNovelPlatformBinding(binding),
@@ -598,22 +597,25 @@ export class PublishingService {
       prisma.chapter.findMany({
         where: {
           novelId,
-          OR: [
-            { chapterStatus: "completed" },
-            { generationState: "approved" },
-            { generationState: "published" },
-          ],
         },
         select: {
           id: true,
           order: true,
           title: true,
+          content: true,
         },
         orderBy: [{ order: "asc" }],
       }),
       listVolumeTitlesByChapterOrder(novelId),
     ]);
-    if (chapters.length === 0) {
+    const publishableChapters = chapters
+      .filter((chapter) => hasPublishingChapterContent(chapter.content))
+      .map((chapter) => ({
+        id: chapter.id,
+        order: chapter.order,
+        title: chapter.title,
+      }));
+    if (publishableChapters.length === 0) {
       throw new AppError("当前小说还没有可发布章节。", 400);
     }
 
@@ -623,7 +625,7 @@ export class PublishingService {
       ({ structured, resolved } = await parseScheduleInstruction({
         novelId,
         instruction,
-        chapters,
+        chapters: publishableChapters,
         request,
       }));
     } catch (error) {
@@ -640,7 +642,7 @@ export class PublishingService {
       bindingId: binding.id,
     });
     const remoteEffective = getEffectiveRemoteProgressRows(remoteProgressSnapshot);
-    for (const chapter of chapters) {
+    for (const chapter of publishableChapters) {
       if (remoteEffective.publishedOrders.has(chapter.order) || remoteEffective.effectiveDraftOrders.has(chapter.order)) {
         continuation.skipChapterIds.add(chapter.id);
       }
@@ -653,7 +655,7 @@ export class PublishingService {
     let items;
     try {
       items = buildChapterPublishScheduleFromOffset({
-        chapters: chapters.map((chapter) => ({
+        chapters: publishableChapters.map((chapter) => ({
           ...chapter,
           volumeTitle: volumeTitleByChapterOrder.get(chapter.order) ?? null,
         })),
@@ -679,7 +681,7 @@ export class PublishingService {
     const mode = normalizeMode(request.mode);
     const defaultChapterCount = Math.max(
       0,
-      chapters.length
+      publishableChapters.length
       - getEffectiveRemoteProgressRows(remoteProgressSnapshot).publishedCount,
     );
     const chapterCount = typeof request.chapterCount === "number" && request.chapterCount > 0

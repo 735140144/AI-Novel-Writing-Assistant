@@ -11,6 +11,7 @@ const mobileView = readFileSync("client/src/pages/novels/mobile/MobileNovelEditV
 const sidebar = readFileSync("client/src/components/layout/Sidebar.tsx", "utf8");
 const mobileNavigation = readFileSync("client/src/components/layout/mobile/mobileSiteNavigation.ts", "utf8");
 const router = readFileSync("client/src/router/index.tsx", "utf8");
+const toastUi = readFileSync("client/src/components/ui/toast.tsx", "utf8");
 const publishingIndexPagePath = "client/src/pages/publishing/PublishingPlatformPage.tsx";
 const publishingAccountsPagePath = "client/src/pages/publishing/PublishingAccountsPage.tsx";
 const publishingWorksPagePath = "client/src/pages/publishing/PublishingWorksPage.tsx";
@@ -109,10 +110,17 @@ test("publishing work detail page requires remote sync before first plan generat
   assert.match(publishingDetailPage, /参与发布章节数量/);
   assert.match(publishingDetailPage, /开始发布/);
   assert.match(publishingDetailPage, /发布详情/);
+  assert.match(publishingDetailPage, /return Math\.max\(remoteProgress\.publishedChapters\.length, maxOrder\)/);
+  assert.match(publishingDetailPage, /return hasRemoteProgress \? remotePublishedCount : localPublished/);
 });
 
 test("publishing query keys follow split accounts-works-detail structure", () => {
   assert.match(queryKeys, /publishingCredentials: \["publishing", "credentials"\] as const/);
   assert.match(queryKeys, /publishingWorks: \["publishing", "works"\] as const/);
   assert.match(queryKeys, /publishingWorkDetail: \(bindingId: string\) => \["publishing", "works", bindingId\] as const/);
+});
+
+test("publishing error toasts auto-close instead of staying pinned", () => {
+  assert.match(toastUi, /duration:\s*3000/);
+  assert.doesNotMatch(toastUi, /duration:\s*Number\.POSITIVE_INFINITY/);
 });

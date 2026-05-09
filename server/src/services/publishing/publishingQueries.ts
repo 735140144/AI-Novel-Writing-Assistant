@@ -4,8 +4,9 @@ import { AppError } from "../../middleware/errorHandler";
 import { getRequestContext } from "../../runtime/requestContext";
 import type { PublishingWorkListItem } from "@ai-novel/shared/types/publishing";
 import { buildKnownBookOptionsFromWorkspace } from "./publishingKnownBooks";
+import { countPublishingReadyChapters } from "./publishingChapterContent";
 import { parseDate, resolvePlanStatusFromItemStatuses, type PrismaLike } from "./publishingCore";
-import { parsePublishingRemoteProgressSnapshot } from "./publishingRemoteProgress";
+import { getEffectiveRemoteProgressRows, parsePublishingRemoteProgressSnapshot } from "./publishingRemoteProgress";
 
 export function requireCurrentUserId(): string {
   const userId = getRequestContext()?.userId?.trim();
@@ -116,6 +117,7 @@ export async function listOwnedBindings(userId: string) {
               id: true,
               generationState: true,
               chapterStatus: true,
+              content: true,
             },
           },
         },
@@ -285,14 +287,11 @@ export async function resolveScheduleContinuation(input: {
 export function buildPublishingWorkListItems(rows: Awaited<ReturnType<typeof listOwnedBindings>>): PublishingWorkListItem[] {
   return rows.map((row) => {
     const remoteProgress = parsePublishingRemoteProgressSnapshot(row.remoteProgressSnapshotJson);
-    const completedChapterCount = row.novel.chapters.filter((chapter) =>
-      chapter.chapterStatus === "completed"
-      || chapter.generationState === "approved"
-      || chapter.generationState === "published").length;
-    const publishedChapterCount = Math.max(
-      new Set(row.publishPlanItems.map((item) => item.chapterId)).size,
-      remoteProgress?.publishedChapters.length ?? 0,
-    );
+    const completedChapterCount = countPublishingReadyChapters(row.novel.chapters);
+    const localPublishedChapterCount = new Set(row.publishPlanItems.map((item) => item.chapterId)).size;
+    const publishedChapterCount = remoteProgress
+      ? getEffectiveRemoteProgressRows(remoteProgress).publishedCount
+      : localPublishedChapterCount;
 
     return {
       bindingId: row.id,

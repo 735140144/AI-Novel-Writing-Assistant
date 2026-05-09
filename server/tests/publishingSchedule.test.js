@@ -19,6 +19,7 @@ const {
   mapPublishingCredential,
   mapPublishingKnownBookOption,
 } = require("../dist/services/publishing/publishingMappers.js");
+const { countPublishingReadyChapters } = require("../dist/services/publishing/publishingChapterContent.js");
 const { getEffectiveRemoteProgressRows } = require("../dist/services/publishing/publishingRemoteProgress.js");
 const { getRegisteredPromptAsset } = require("../dist/prompting/registry.js");
 
@@ -356,6 +357,53 @@ test("publishing remote progress ignores placeholder drafts and keeps published 
   );
   assert.equal(progress.publishedCount, 1);
   assert.equal(progress.effectiveDraftCount, 1);
+});
+
+test("publishing remote progress treats max published order as the published count floor", () => {
+  const progress = getEffectiveRemoteProgressRows({
+    publishedChapters: [
+      {
+        source: "chapter",
+        order: 180,
+        title: "第180章",
+        chapterName: "第180章",
+        itemId: "published-180",
+      },
+      {
+        source: "chapter",
+        order: 179,
+        title: "第179章",
+        chapterName: "第179章",
+        itemId: "published-179",
+      },
+      {
+        source: "chapter",
+        order: 160,
+        title: "第160章",
+        chapterName: "第160章",
+        itemId: "published-160",
+      },
+    ],
+    draftChapters: [],
+    effectiveDraftChapters: [],
+  });
+
+  assert.equal(progress.publishedCount, 180);
+  assert.ok(progress.publishedOrders.has(1));
+  assert.ok(progress.publishedOrders.has(160));
+  assert.ok(progress.publishedOrders.has(180));
+});
+
+test("publishing ready chapter count follows actual content instead of workflow status", () => {
+  assert.equal(
+    countPublishingReadyChapters([
+      { content: "第一章正文", generationState: "repaired", chapterStatus: "needs_repair" },
+      { content: "  第二章正文  ", generationState: "reviewed", chapterStatus: "generating" },
+      { content: "   ", generationState: "approved", chapterStatus: "completed" },
+      { content: null, generationState: "approved", chapterStatus: "completed" },
+    ]),
+    2,
+  );
 });
 
 test("publishing schedule parsing prompt is registered and structured", () => {

@@ -32,6 +32,30 @@ function buildNameSet(rows: Array<{ chapterName: string; title: string }>): Set<
   return names;
 }
 
+function resolveMaxOrder(rows: Array<{ order?: number | null }>): number {
+  let maxOrder = 0;
+  for (const row of rows) {
+    if (typeof row.order === "number" && Number.isFinite(row.order) && row.order > maxOrder) {
+      maxOrder = row.order;
+    }
+  }
+  return maxOrder;
+}
+
+function buildPublishedOrderSet(rows: Array<{ order?: number | null }>): Set<number> {
+  const explicitOrders = buildOrderSet(rows);
+  const maxOrder = resolveMaxOrder(rows);
+  if (maxOrder <= 0) {
+    return explicitOrders;
+  }
+
+  const normalizedOrders = new Set<number>();
+  for (let order = 1; order <= maxOrder; order += 1) {
+    normalizedOrders.add(order);
+  }
+  return normalizedOrders;
+}
+
 function mapProgressRow(row: FanqieDispatchProgressChapterRow): PublishingProgressChapterRow {
   return {
     source: row.source,
@@ -89,12 +113,13 @@ export function getEffectiveRemoteProgressRows(
     "bookId" | "bookTitle" | "publishedChapters" | "draftChapters" | "effectiveDraftChapters"
   > | FanqieDispatchBookProgress,
 ) {
+  const publishedMaxOrder = resolveMaxOrder(progress.publishedChapters);
   return {
-    publishedOrders: buildOrderSet(progress.publishedChapters),
+    publishedOrders: buildPublishedOrderSet(progress.publishedChapters),
     publishedNames: buildNameSet(progress.publishedChapters),
     effectiveDraftOrders: buildOrderSet(progress.effectiveDraftChapters),
     effectiveDraftNames: buildNameSet(progress.effectiveDraftChapters),
-    publishedCount: progress.publishedChapters.length,
+    publishedCount: Math.max(progress.publishedChapters.length, publishedMaxOrder),
     effectiveDraftCount: progress.effectiveDraftChapters.length,
   };
 }

@@ -60,9 +60,28 @@ function inferDefaultChapterCount(input: {
   return Math.max(1, input.completedChapterCount - input.publishedChapterCount);
 }
 
-function countPublishedChapters(plan: PublishPlan | null, remotePublishedCount: number): number {
+function countRemotePublishedChapters(
+  remoteProgress: { publishedChapters: Array<{ order?: number | null }> } | null,
+): number {
+  if (!remoteProgress) {
+    return 0;
+  }
+  const maxOrder = remoteProgress.publishedChapters.reduce((currentMax, row) => {
+    if (typeof row.order !== "number" || !Number.isFinite(row.order)) {
+      return currentMax;
+    }
+    return Math.max(currentMax, row.order);
+  }, 0);
+  return Math.max(remoteProgress.publishedChapters.length, maxOrder);
+}
+
+function countPublishedChapters(
+  plan: PublishPlan | null,
+  remotePublishedCount: number,
+  hasRemoteProgress: boolean,
+): number {
   const localPublished = plan?.items.filter((item) => item.status === "published").length ?? 0;
-  return Math.max(localPublished, remotePublishedCount);
+  return hasRemoteProgress ? remotePublishedCount : localPublished;
 }
 
 function latestJob(jobs: PublishDispatchJob[]): PublishDispatchJob | null {
@@ -85,7 +104,12 @@ export default function PublishingWorkDetailPage() {
 
   const detail = detailQuery.data?.data;
   const remoteProgress = detail?.remoteProgress ?? null;
-  const publishedChapterCount = countPublishedChapters(detail?.activePlan ?? null, remoteProgress?.publishedChapters.length ?? 0);
+  const remotePublishedCount = countRemotePublishedChapters(remoteProgress);
+  const publishedChapterCount = countPublishedChapters(
+    detail?.activePlan ?? null,
+    remotePublishedCount,
+    Boolean(remoteProgress),
+  );
   const recommendedChapterCount = detail
     ? inferDefaultChapterCount({
       completedChapterCount: detail.novel.completedChapterCount,
@@ -187,7 +211,7 @@ export default function PublishingWorkDetailPage() {
       };
     }
     return {
-      published: remoteProgress.publishedChapters.length,
+      published: countRemotePublishedChapters(remoteProgress),
       draft: remoteProgress.effectiveDraftChapters.length,
     };
   }, [remoteProgress]);
