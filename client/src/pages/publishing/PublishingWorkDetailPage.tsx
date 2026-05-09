@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { PublishDispatchJob, PublishItemStatus, PublishMode, PublishPlan, PublishPlanStatus } from "@ai-novel/shared/types/publishing";
+import type { ApiResponse } from "@ai-novel/shared/types/api";
+import type {
+  PublishDispatchJob,
+  PublishItemStatus,
+  PublishMode,
+  PublishPlan,
+  PublishPlanStatus,
+  PublishingWorkDetailResponse,
+} from "@ai-novel/shared/types/publishing";
 import { useParams } from "react-router-dom";
 import { Loader2, RefreshCw, Send, UploadCloud } from "lucide-react";
 import {
@@ -209,7 +217,27 @@ export default function PublishingWorkDetailPage() {
 
   const syncMutation = useMutation({
     mutationFn: () => syncPublishingBindingProgress(bindingId),
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      const syncedRemoteProgress = result.data ?? null;
+      queryClient.setQueryData<ApiResponse<PublishingWorkDetailResponse>>(
+        queryKeys.publishingWorkDetail(bindingId),
+        (current) => {
+          if (!current?.data) {
+            return current;
+          }
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              remoteProgress: syncedRemoteProgress,
+            },
+          };
+        },
+      );
+      setStartDate(plusOneDate(resolveDefaultStartAnchorDate({
+        activePlan,
+        remoteProgress: syncedRemoteProgress,
+      })));
       toast.success("远端进度已同步。");
       await invalidateDetail();
     },

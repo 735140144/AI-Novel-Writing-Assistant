@@ -122,6 +122,8 @@ test("publishing work detail page requires remote sync before first plan generat
   assert.match(publishingDetailPage, /不会再次参与本次提交/);
   assert.match(publishingDetailPage, /latestScheduledPublishTime/);
   assert.match(publishingDetailPage, /远端已排期至/);
+  assert.match(publishingDetailPage, /queryClient\.setQueryData[\s\S]{0,160}queryKeys\.publishingWorkDetail\(bindingId\)/);
+  assert.match(publishingDetailPage, /setStartDate\(plusOneDate\(resolveDefaultStartAnchorDate/);
   assert.match(publishingDetailPage, /return Math\.max\(remoteProgress\.publishedChapters\.length, maxOrder\)/);
   assert.match(publishingDetailPage, /return hasRemoteProgress \? remotePublishedCount : localPublished/);
 });
