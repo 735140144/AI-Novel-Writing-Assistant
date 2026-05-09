@@ -32,13 +32,38 @@ function normalizeDateTimeParts(year: string, month: string, day: string, hour =
   return `${isoDate} ${String(numericHour).padStart(2, "0")}:${String(numericMinute).padStart(2, "0")}`;
 }
 
+function normalizeUnixTimestamp(value: string | number): string | null {
+  const raw = typeof value === "number" ? String(value) : value.trim();
+  if (!/^\d{10}(\d{3})?$/.test(raw)) {
+    return null;
+  }
+  const timestamp = Number.parseInt(raw, 10);
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+  const milliseconds = raw.length === 13 ? timestamp : timestamp * 1000;
+  const date = new Date(milliseconds);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  return `${date.toISOString().slice(0, 10)} ${date.toISOString().slice(11, 16)}`;
+}
+
 export function normalizeRemoteScheduledPublishTime(value: unknown): string | null {
+  if (typeof value === "number") {
+    return normalizeUnixTimestamp(value);
+  }
   if (typeof value !== "string") {
     return null;
   }
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
+  }
+
+  const unixTimestamp = normalizeUnixTimestamp(trimmed);
+  if (unixTimestamp) {
+    return unixTimestamp;
   }
 
   let match = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})[ T]([0-2]?\d):([0-5]\d)(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?$/);
@@ -159,12 +184,13 @@ function getScheduledPublishTimesFromRows(rows: Array<{ timerTime?: string | nul
 
 export function getLatestRemoteScheduledPublishTime(
   progress: (
-    Pick<PublishingBindingRemoteProgress, "draftChapters" | "latestScheduledPublishTime">
+    Pick<PublishingBindingRemoteProgress, "publishedChapters" | "draftChapters" | "latestScheduledPublishTime">
     | FanqieDispatchBookProgress
   ),
 ): string | null {
+  const publishedRows = "publishedChapters" in progress ? progress.publishedChapters : [];
   const draftRows = "draftChapters" in progress ? progress.draftChapters : [];
-  const mappedRows = draftRows.map((row) => {
+  const mappedRows = [...publishedRows, ...draftRows].map((row) => {
     const rawRow = row as unknown as Record<string, unknown>;
     return {
       timerTime: normalizeRemoteScheduledPublishTime(

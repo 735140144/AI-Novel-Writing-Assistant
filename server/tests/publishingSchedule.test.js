@@ -216,6 +216,26 @@ test("publishing remote progress derives the latest scheduled publish time from 
   assert.equal(latestScheduledPublishTime, "2026-05-13 09:30");
 });
 
+test("publishing remote progress derives the latest scheduled publish time from published chapter unix timestamps", () => {
+  const latestScheduledPublishTime = getLatestRemoteScheduledPublishTime({
+    bookId: "book-1",
+    bookTitle: "Novel A",
+    publishedChapters: [
+      { source: "chapter", order: 179, title: "第179章", chapterName: "第179章", timerTime: "1778803200" },
+      { source: "chapter", order: 180, title: "第180章", chapterName: "第180章", timerTime: "1778832000" },
+    ],
+    draftChapters: [
+      { source: "draft", title: "未命名草稿", chapterName: "未命名草稿", itemId: "draft-1", modifyTime: "1778317540" },
+    ],
+    effectiveDraftChapters: [
+      { source: "draft", title: "未命名草稿", chapterName: "未命名草稿", itemId: "draft-1", modifyTime: "1778317540" },
+    ],
+    syncedAt: "2026-05-09T05:33:21.063Z",
+  });
+
+  assert.equal(latestScheduledPublishTime, "2026-05-15 08:00");
+});
+
 test("publishing remote continuation uses remote scheduled time when local occupied plan is missing", () => {
   const continuation = mergeRemoteContinuationState({
     localOccupiedPlannedTime: null,
@@ -234,6 +254,32 @@ test("publishing remote continuation uses remote scheduled time when local occup
 
   assert.deepEqual(continuation, {
     occupiedPlannedTime: "2026-05-12 08:00",
+    occupiedCount: 1,
+  });
+});
+
+test("publishing remote continuation uses published chapter unix timestamps when drafts have no planned time", () => {
+  const continuation = mergeRemoteContinuationState({
+    localOccupiedPlannedTime: null,
+    localOccupiedCount: 0,
+    remoteProgress: {
+      bookId: "book-1",
+      bookTitle: "Novel A",
+      publishedChapters: [
+        { source: "chapter", order: 180, title: "第180章", chapterName: "第180章", timerTime: "1778832000" },
+      ],
+      draftChapters: [
+        { source: "draft", title: "未命名草稿", chapterName: "未命名草稿", itemId: "draft-1", modifyTime: "1778317540" },
+      ],
+      effectiveDraftChapters: [
+        { source: "draft", title: "未命名草稿", chapterName: "未命名草稿", itemId: "draft-1", modifyTime: "1778317540" },
+      ],
+      syncedAt: "2026-05-09T05:33:21.063Z",
+    },
+  });
+
+  assert.deepEqual(continuation, {
+    occupiedPlannedTime: "2026-05-15 08:00",
     occupiedCount: 1,
   });
 });
