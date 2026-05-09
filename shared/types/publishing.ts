@@ -98,6 +98,7 @@ export interface PublishingProgressChapterRow {
   title: string;
   chapterName: string;
   itemId?: string | null;
+  timerTime?: string | null;
 }
 
 export interface PublishingBindingRemoteProgress {
@@ -106,6 +107,7 @@ export interface PublishingBindingRemoteProgress {
   publishedChapters: PublishingProgressChapterRow[];
   draftChapters: PublishingProgressChapterRow[];
   effectiveDraftChapters: PublishingProgressChapterRow[];
+  latestScheduledPublishTime?: string | null;
   syncedAt: string;
 }
 

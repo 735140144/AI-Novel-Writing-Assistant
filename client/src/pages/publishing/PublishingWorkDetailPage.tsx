@@ -65,6 +65,35 @@ function plusOneDate(value?: string | null): string {
   return next.toISOString().slice(0, 10);
 }
 
+function extractPlannedDate(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const match = trimmed.match(/^(\d{4}-\d{2}-\d{2}) /);
+  return match?.[1] ?? null;
+}
+
+function resolveDefaultStartAnchorDate(input: {
+  activePlan: PublishPlan | null;
+  remoteProgress: { latestScheduledPublishTime?: string | null } | null;
+}): string | null {
+  const localStartDate = input.activePlan?.resolvedSchedule.useTimer
+    ? input.activePlan.resolvedSchedule.startDate ?? null
+    : null;
+  const remoteScheduledDate = extractPlannedDate(input.remoteProgress?.latestScheduledPublishTime ?? null);
+  if (!localStartDate) {
+    return remoteScheduledDate;
+  }
+  if (!remoteScheduledDate) {
+    return localStartDate;
+  }
+  return remoteScheduledDate > localStartDate ? remoteScheduledDate : localStartDate;
+}
+
 function inferDefaultChapterCount(input: {
   completedChapterCount: number;
   publishedChapterCount: number;
@@ -152,13 +181,17 @@ export default function PublishingWorkDetailPage() {
   }, [recommendedChapterCount, bindingId, useTimer]);
 
   useEffect(() => {
-    const nextStartDate = plusOneDate(
-      activePlan?.resolvedSchedule.useTimer
-        ? activePlan.resolvedSchedule.startDate ?? null
-        : null,
-    );
+    const nextStartDate = plusOneDate(resolveDefaultStartAnchorDate({
+      activePlan,
+      remoteProgress,
+    }));
     setStartDate(nextStartDate);
-  }, [activePlan?.resolvedSchedule.startDate, activePlan?.resolvedSchedule.useTimer, bindingId]);
+  }, [
+    bindingId,
+    activePlan?.resolvedSchedule.startDate,
+    activePlan?.resolvedSchedule.useTimer,
+    remoteProgress?.latestScheduledPublishTime,
+  ]);
 
   useEffect(() => {
     if (activePlan?.mode) {
@@ -402,6 +435,11 @@ export default function PublishingWorkDetailPage() {
                   当前按立即发布生成计划。开始发布后会按顺序逐章立即提交，不带定时时间。
                 </div>
               )}
+              {useTimer && remoteProgress?.latestScheduledPublishTime ? (
+                <div className="text-xs text-muted-foreground">
+                  远端已排期至 {remoteProgress.latestScheduledPublishTime}，新计划默认从下一天继续。
+                </div>
+              ) : null}
             </div>
             <div className="space-y-3">
               <div className="space-y-2">
@@ -452,6 +490,10 @@ export default function PublishingWorkDetailPage() {
               <div className="rounded-lg bg-muted/40 p-3">
                 <div className="text-muted-foreground">远端草稿箱</div>
                 <div className="mt-1 text-lg font-medium">{progressSummary.draft}</div>
+              </div>
+              <div className="rounded-lg bg-muted/40 p-3 sm:col-span-2">
+                <div className="text-muted-foreground">远端已排期至</div>
+                <div className="mt-1 text-lg font-medium">{remoteProgress?.latestScheduledPublishTime || "-"}</div>
               </div>
             </div>
           )}

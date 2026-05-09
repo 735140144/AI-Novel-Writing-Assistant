@@ -2,11 +2,18 @@ import { PublishItemStatus, PublishingPlatform } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { AppError } from "../../middleware/errorHandler";
 import { getRequestContext } from "../../runtime/requestContext";
-import type { PublishingWorkListItem } from "@ai-novel/shared/types/publishing";
+import type {
+  PublishingBindingRemoteProgress,
+  PublishingWorkListItem,
+} from "@ai-novel/shared/types/publishing";
 import { buildKnownBookOptionsFromWorkspace } from "./publishingKnownBooks";
 import { countPublishingReadyChapters } from "./publishingChapterContent";
 import { parseDate, resolvePlanStatusFromItemStatuses, type PrismaLike } from "./publishingCore";
-import { getEffectiveRemoteProgressRows, parsePublishingRemoteProgressSnapshot } from "./publishingRemoteProgress";
+import {
+  getEffectiveRemoteProgressRows,
+  mergeRemoteContinuationState,
+  parsePublishingRemoteProgressSnapshot,
+} from "./publishingRemoteProgress";
 
 export function requireCurrentUserId(): string {
   const userId = getRequestContext()?.userId?.trim();
@@ -233,6 +240,7 @@ export async function listKnownBooks(userId: string) {
 export async function resolveScheduleContinuation(input: {
   novelId: string;
   bindingId: string;
+  remoteProgress?: PublishingBindingRemoteProgress | null;
 }) {
   const completedStatuses = [PublishItemStatus.draft_box, PublishItemStatus.published];
   const occupiedItems = await prisma.publishPlanItem.findMany({
@@ -277,10 +285,16 @@ export async function resolveScheduleContinuation(input: {
     ? activePlannedItems[activePlannedItems.length - 1].plannedPublishTime
     : null;
 
+  const mergedContinuation = mergeRemoteContinuationState({
+    localOccupiedPlannedTime: latestPlannedTime ?? lastOccupiedTime,
+    localOccupiedCount: occupiedCount,
+    remoteProgress: input.remoteProgress ?? null,
+  });
+
   return {
     skipChapterIds,
-    occupiedCount,
-    occupiedPlannedTime: latestPlannedTime ?? lastOccupiedTime,
+    occupiedCount: mergedContinuation.occupiedCount,
+    occupiedPlannedTime: mergedContinuation.occupiedPlannedTime,
   };
 }
 

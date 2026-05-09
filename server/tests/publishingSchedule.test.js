@@ -22,7 +22,11 @@ const {
   mapPublishingKnownBookOption,
 } = require("../dist/services/publishing/publishingMappers.js");
 const { countPublishingReadyChapters } = require("../dist/services/publishing/publishingChapterContent.js");
-const { getEffectiveRemoteProgressRows } = require("../dist/services/publishing/publishingRemoteProgress.js");
+const {
+  getEffectiveRemoteProgressRows,
+  getLatestRemoteScheduledPublishTime,
+  mergeRemoteContinuationState,
+} = require("../dist/services/publishing/publishingRemoteProgress.js");
 const {
   hasPlanSubmissionEvidence,
   hasBlockingPlanSubmissionEvidence,
@@ -194,6 +198,44 @@ test("publishing continuation always advances beyond the last occupied publish t
       [4, "2026-05-11 08:00"],
     ],
   );
+});
+
+test("publishing remote progress derives the latest scheduled publish time from draft rows", () => {
+  const latestScheduledPublishTime = getLatestRemoteScheduledPublishTime({
+    bookId: "book-1",
+    bookTitle: "Novel A",
+    publishedChapters: [],
+    draftChapters: [
+      { source: "draft", order: 181, title: "第181章", chapterName: "第181章", timerTime: "2026-05-12 08:00" },
+      { source: "draft", order: 182, title: "第182章", chapterName: "第182章", timer_time: "20260513 09:30" },
+    ],
+    effectiveDraftChapters: [],
+    syncedAt: "2026-05-09T05:33:21.063Z",
+  });
+
+  assert.equal(latestScheduledPublishTime, "2026-05-13 09:30");
+});
+
+test("publishing remote continuation uses remote scheduled time when local occupied plan is missing", () => {
+  const continuation = mergeRemoteContinuationState({
+    localOccupiedPlannedTime: null,
+    localOccupiedCount: 0,
+    remoteProgress: {
+      bookId: "book-1",
+      bookTitle: "Novel A",
+      publishedChapters: [],
+      draftChapters: [
+        { source: "draft", order: 181, title: "第181章", chapterName: "第181章", timerTime: "2026-05-12 08:00" },
+      ],
+      effectiveDraftChapters: [],
+      syncedAt: "2026-05-09T05:33:21.063Z",
+    },
+  });
+
+  assert.deepEqual(continuation, {
+    occupiedPlannedTime: "2026-05-12 08:00",
+    occupiedCount: 1,
+  });
 });
 
 test("dispatch status mapping keeps draft and publish completion separate", () => {

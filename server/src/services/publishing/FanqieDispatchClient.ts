@@ -71,6 +71,12 @@ const progressChapterRowSchema = z.object({
   title: z.string(),
   chapterName: z.string(),
   itemId: z.string().optional(),
+  timerTime: z.string().optional(),
+  timer_time: z.string().optional(),
+  plannedPublishTime: z.string().optional(),
+  planned_publish_time: z.string().optional(),
+  publishTime: z.string().optional(),
+  publish_time: z.string().optional(),
 }).passthrough();
 
 const bookProgressResponseSchema = z.object({
@@ -80,7 +86,11 @@ const bookProgressResponseSchema = z.object({
     publishedChapters: z.array(progressChapterRowSchema),
     draftChapters: z.array(progressChapterRowSchema),
     effectiveDraftChapters: z.array(progressChapterRowSchema),
-  }),
+    latestScheduledPublishTime: z.string().optional(),
+    latest_scheduled_publish_time: z.string().optional(),
+    lastPlannedPublishTime: z.string().optional(),
+    last_planned_publish_time: z.string().optional(),
+  }).passthrough(),
 });
 
 const dispatchErrorSchema = z.object({
@@ -145,6 +155,12 @@ export interface FanqieDispatchProgressChapterRow {
   title: string;
   chapterName: string;
   itemId?: string;
+  timerTime?: string;
+  timer_time?: string;
+  plannedPublishTime?: string;
+  planned_publish_time?: string;
+  publishTime?: string;
+  publish_time?: string;
 }
 
 export interface FanqieDispatchBookProgress {
@@ -153,6 +169,10 @@ export interface FanqieDispatchBookProgress {
   publishedChapters: FanqieDispatchProgressChapterRow[];
   draftChapters: FanqieDispatchProgressChapterRow[];
   effectiveDraftChapters: FanqieDispatchProgressChapterRow[];
+  latestScheduledPublishTime?: string;
+  latest_scheduled_publish_time?: string;
+  lastPlannedPublishTime?: string;
+  last_planned_publish_time?: string;
 }
 
 export class FanqieDispatchApiError extends Error {

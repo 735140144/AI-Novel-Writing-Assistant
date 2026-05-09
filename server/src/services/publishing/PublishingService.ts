@@ -645,6 +645,7 @@ export class PublishingService {
     const continuation = await resolveScheduleContinuation({
       novelId,
       bindingId: binding.id,
+      remoteProgress: remoteProgressSnapshot,
     });
     const remoteEffective = getEffectiveRemoteProgressRows(remoteProgressSnapshot);
     for (const chapter of publishableChapters) {
