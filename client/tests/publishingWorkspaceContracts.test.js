@@ -29,6 +29,7 @@ test("publishing API stays server-mediated and exposes split module endpoints", 
   assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/progress\/sync/);
   assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/plans/);
   assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/plans\/\$\{planId\}\/submit/);
+  assert.match(novelApi, /\/novels\/publishing\/works\/\$\{bindingId\}\/plans\/\$\{planId\}/);
 });
 
 test("publishing remains a novel workspace flow step but primary entry is menu-level", () => {
@@ -109,6 +110,7 @@ test("publishing work detail page requires remote sync before first plan generat
   assert.match(publishingDetailPage, /生成发布时间表/);
   assert.match(publishingDetailPage, /参与发布章节数量/);
   assert.match(publishingDetailPage, /开始发布/);
+  assert.match(publishingDetailPage, /清除当前计划/);
   assert.match(publishingDetailPage, /发布详情/);
   assert.match(publishingDetailPage, /return Math\.max\(remoteProgress\.publishedChapters\.length, maxOrder\)/);
   assert.match(publishingDetailPage, /return hasRemoteProgress \? remotePublishedCount : localPublished/);

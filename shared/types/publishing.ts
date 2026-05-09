@@ -173,6 +173,11 @@ export interface PublishPlan {
   updatedAt: string;
 }
 
+export interface DeletePublishPlanResponse {
+  planId: string;
+  deletedItemCount: number;
+}
+
 export interface PublishDispatchJob {
   id: string;
   requestId: string;

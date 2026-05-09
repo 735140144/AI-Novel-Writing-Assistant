@@ -1,4 +1,5 @@
 import type {
+  DeletePublishPlanResponse,
   GeneratePublishPlanRequest,
   PublishMode,
   PublishingBindingRemoteProgress,
@@ -968,6 +969,64 @@ export class PublishingService {
       throw new AppError("小说发布绑定不存在。", 404);
     }
     return this.submitPlan(binding.novelId, planId, request);
+  }
+
+  async deletePlanByBinding(bindingId: string, planId: string): Promise<DeletePublishPlanResponse> {
+    const userId = requireCurrentUserId();
+    const plan = await prisma.publishPlan.findFirst({
+      where: {
+        id: planId,
+        bindingId,
+        binding: {
+          credential: { userId },
+        },
+      },
+      include: {
+        items: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
+        dispatchJobs: {
+          select: {
+            id: true,
+            status: true,
+            externalJobId: true,
+          },
+        },
+      },
+    });
+    if (!plan) {
+      throw new AppError("发布计划不存在。", 404);
+    }
+
+    const blockedItemStatuses: PublishItemStatus[] = [
+      PublishItemStatus.submitting,
+      PublishItemStatus.draft_box,
+      PublishItemStatus.published,
+    ];
+    const hasCommittedItems = plan.items.some((item) => blockedItemStatuses.includes(item.status));
+    const hasCommittedJobs = plan.dispatchJobs.some((job) =>
+      job.status === PublishDispatchJobStatus.running
+      || job.status === PublishDispatchJobStatus.leased
+      || job.status === PublishDispatchJobStatus.completed
+      || Boolean(job.externalJobId),
+    );
+
+    if (hasCommittedItems || hasCommittedJobs) {
+      throw new AppError("当前计划已经提交过平台，不能直接清除。请保留当前计划并继续处理后续章节。", 409);
+    }
+
+    const deletedItemCount = plan.items.length;
+    await prisma.publishPlan.delete({
+      where: { id: plan.id },
+    });
+
+    return {
+      planId: plan.id,
+      deletedItemCount,
+    };
   }
 
   async refreshJob(novelId: string, jobId: string) {

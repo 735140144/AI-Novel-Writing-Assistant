@@ -4,6 +4,7 @@ import type { PublishDispatchJob, PublishItemStatus, PublishMode, PublishPlan, P
 import { useParams } from "react-router-dom";
 import { Loader2, RefreshCw, Send, UploadCloud } from "lucide-react";
 import {
+  deletePublishingPlan,
   generatePublishingPlan,
   getPublishingWorkDetail,
   refreshPublishingJob,
@@ -192,6 +193,22 @@ export default function PublishingWorkDetailPage() {
     },
   });
 
+  const deletePlanMutation = useMutation({
+    mutationFn: () => {
+      if (!activePlan) {
+        throw new Error("当前没有可清除的发布时间表。");
+      }
+      return deletePublishingPlan(bindingId, activePlan.id);
+    },
+    onSuccess: async () => {
+      toast.success("当前本地发布时间表已清除。");
+      await invalidateDetail();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "清除当前计划失败。");
+    },
+  });
+
   const refreshJobMutation = useMutation({
     mutationFn: (jobId: string) => refreshPublishingJob(bindingId, jobId),
     onSuccess: async () => {
@@ -366,7 +383,26 @@ export default function PublishingWorkDetailPage() {
                 : "生成发布时间表后，系统会按顺序准备逐章提交列表。"}
             </p>
           </div>
-          {activePlan ? <Badge variant={statusVariant(activePlan.status)}>{planStatusLabels[activePlan.status]}</Badge> : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {activePlan ? <Badge variant={statusVariant(activePlan.status)}>{planStatusLabels[activePlan.status]}</Badge> : null}
+            {activePlan ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={deletePlanMutation.isPending}
+                onClick={() => {
+                  const confirmed = window.confirm("确认清除当前本地发布时间表吗？已提交到平台的章节不会被回滚。");
+                  if (!confirmed) {
+                    return;
+                  }
+                  deletePlanMutation.mutate();
+                }}
+              >
+                {deletePlanMutation.isPending ? "清除中..." : "清除当前计划"}
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {activePlan?.items.length ? (

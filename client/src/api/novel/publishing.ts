@@ -1,6 +1,7 @@
 import type { ApiResponse } from "@ai-novel/shared/types/api";
 import type {
   CreatePublishingCredentialRequest,
+  DeletePublishPlanResponse,
   GeneratePublishPlanRequest,
   NovelPlatformBinding,
   PublishDispatchJob,
@@ -100,6 +101,13 @@ export async function submitPublishingPlan(bindingId: string, planId: string, pa
   const { data } = await apiClient.post<ApiResponse<PublishDispatchJob[]>>(
     `/novels/publishing/works/${bindingId}/plans/${planId}/submit`,
     payload,
+  );
+  return data;
+}
+
+export async function deletePublishingPlan(bindingId: string, planId: string) {
+  const { data } = await apiClient.delete<ApiResponse<DeletePublishPlanResponse>>(
+    `/novels/publishing/works/${bindingId}/plans/${planId}`,
   );
   return data;
 }

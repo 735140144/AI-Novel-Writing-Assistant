@@ -256,6 +256,24 @@ export function registerNovelPublishingRoutes(input: RegisterNovelPublishingRout
     },
   );
 
+  router.delete(
+    "/publishing/works/:bindingId/plans/:planId",
+    validate({ params: publishPlanParamsSchema }),
+    async (req, res, next) => {
+      try {
+        const { bindingId, planId } = req.params as z.infer<typeof publishPlanParamsSchema>;
+        const data = await publishingService.deletePlanByBinding(bindingId, planId);
+        res.status(200).json({
+          success: true,
+          data,
+          message: "当前本地发布时间表已清除。",
+        } satisfies ApiResponse<typeof data>);
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
+
   router.post(
     "/publishing/works/:bindingId/jobs/:jobId/refresh",
     validate({ params: publishingJobRefreshParamsSchema }),
