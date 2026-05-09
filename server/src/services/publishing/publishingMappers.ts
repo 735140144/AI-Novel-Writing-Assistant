@@ -171,6 +171,7 @@ export function mapPublishPlan(row: {
         startChapterOrder: 1,
         endChapterOrder: 1,
         timezone: "Asia/Shanghai",
+        useTimer: true,
         assumptions: [],
       },
     status: row.status,

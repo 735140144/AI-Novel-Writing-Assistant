@@ -122,21 +122,23 @@ export interface PublishingKnownBookOption {
 
 export interface PublishingStructuredSchedule {
   startDate?: string | null;
-  publishTime: string;
+  publishTime?: string | null;
   chaptersPerDay: number;
   startChapterOrder?: number | null;
   endChapterOrder?: number | null;
   timezone?: string | null;
+  useTimer?: boolean;
   assumptions?: string[];
 }
 
 export interface PublishingResolvedSchedule {
-  startDate: string;
-  publishTime: string;
+  startDate?: string | null;
+  publishTime?: string | null;
   chaptersPerDay: number;
   startChapterOrder: number;
   endChapterOrder: number;
   timezone: string;
+  useTimer: boolean;
   assumptions: string[];
 }
 
@@ -271,10 +273,14 @@ export interface UpsertNovelPlatformBindingRequest {
 export interface GeneratePublishPlanRequest {
   bindingId?: string;
   chapterCount?: number;
-  instruction: string;
+  instruction?: string;
   mode?: PublishMode;
   startChapterOrder?: number;
   endChapterOrder?: number;
+  useTimer?: boolean;
+  startDate?: string;
+  publishTime?: string;
+  chaptersPerDay?: number;
   provider?: LLMProvider;
   model?: string;
   temperature?: number;

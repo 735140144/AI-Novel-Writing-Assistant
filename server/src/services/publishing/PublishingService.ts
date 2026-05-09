@@ -55,6 +55,7 @@ import {
   groupPublishPlanItemsByPlannedTime,
   resolveContinuationStartIndexOffset,
 } from "./publishingSchedule";
+import { buildPublishOptions } from "./publishingDispatchPayloads";
 import {
   mapDispatchJobStatusToItemStatus,
   resolveDispatchErrorHttpStatus,
@@ -587,9 +588,10 @@ export class PublishingService {
     const binding = request.bindingId
       ? await getOwnedBinding(novelId, request.bindingId, userId)
       : await getActiveBinding(novelId, userId);
-    const instruction = request.instruction.trim();
-    if (!instruction) {
-      throw new AppError("请填写发布节奏。", 400);
+    const instruction = request.instruction?.trim() || "";
+    const hasStructuredScheduleInput = typeof request.chaptersPerDay === "number" && request.chaptersPerDay > 0;
+    if (!hasStructuredScheduleInput && !instruction) {
+      throw new AppError("请填写发布计划。", 400);
     }
     const remoteProgressSnapshot = parsePublishingRemoteProgressSnapshot(binding.remoteProgressSnapshotJson);
     if (!remoteProgressSnapshot) {
@@ -714,14 +716,14 @@ export class PublishingService {
           bindingId: binding.id,
           platform: PublishingPlatform.fanqie,
           mode,
-          instruction,
+          instruction: instruction || (request.useTimer === false ? "立即发布" : "结构化发布计划"),
           structuredScheduleJson: safeJsonStringify(structured),
           resolvedScheduleJson: safeJsonStringify(continuedSchedule),
           timezone: continuedSchedule.timezone,
           startChapterOrder: continuedSchedule.startChapterOrder,
           endChapterOrder: continuedSchedule.endChapterOrder,
           chaptersPerDay: continuedSchedule.chaptersPerDay,
-          publishTimeOfDay: continuedSchedule.publishTime,
+          publishTimeOfDay: continuedSchedule.publishTime ?? "immediate",
           status: PublishPlanStatus.ready,
           items: {
             create: scopedItems.map((item) => ({
@@ -891,11 +893,11 @@ export class PublishingService {
           bookTitle: plan.binding.bookTitle,
           mode,
           requestId,
-          publishOptions: {
+          publishOptions: buildPublishOptions({
+            plannedPublishTime: item.plannedPublishTime,
             useAi: request.useAi,
-            timerTime: item.plannedPublishTime,
             dailyWordLimit: request.dailyWordLimit,
-          },
+          }),
           chapters: dispatchChapters,
         });
         const updated = await prisma.$transaction(async (tx) => {

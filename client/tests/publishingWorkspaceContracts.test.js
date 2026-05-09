@@ -107,6 +107,11 @@ test("publishing work detail page requires remote sync before first plan generat
   assert.match(publishingDetailPage, /refreshPublishingJob/);
   assert.match(publishingDetailPage, /同步远端进度/);
   assert.match(publishingDetailPage, /首次生成发布时间表前/);
+  assert.match(publishingDetailPage, /立即发布/);
+  assert.match(publishingDetailPage, /定时发布/);
+  assert.match(publishingDetailPage, /起始日期/);
+  assert.match(publishingDetailPage, /每日发布章节数/);
+  assert.match(publishingDetailPage, /发布时间/);
   assert.match(publishingDetailPage, /生成发布时间表/);
   assert.match(publishingDetailPage, /参与发布章节数量/);
   assert.match(publishingDetailPage, /开始发布/);

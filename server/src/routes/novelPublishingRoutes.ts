@@ -46,14 +46,39 @@ const upsertBindingSchema = z.object({
 });
 
 const generatePlanSchema = z.object({
-  instruction: z.string().trim().min(1).max(1000),
+  instruction: z.string().trim().max(1000).optional(),
   chapterCount: z.number().int().min(1).max(2000).optional(),
   mode: z.enum(["draft", "publish"]).optional(),
   startChapterOrder: z.number().int().min(1).max(2000).optional(),
   endChapterOrder: z.number().int().min(1).max(2000).optional(),
+  useTimer: z.boolean().optional(),
+  startDate: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  publishTime: z.string().trim().regex(/^([01]?\d|2[0-3]):([0-5]\d)$/).optional(),
+  chaptersPerDay: z.number().int().min(1).max(50).optional(),
   provider: llmProviderSchema.optional(),
   model: z.string().trim().max(120).optional(),
   temperature: z.number().min(0).max(2).optional(),
+}).superRefine((value, ctx) => {
+  if (value.useTimer === false) {
+    if (!value.chapterCount) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["chapterCount"],
+        message: "立即发布时必须提供参与发布章节数量。",
+      });
+    }
+    return;
+  }
+
+  const hasStructuredFields = Boolean(value.startDate && value.publishTime && value.chaptersPerDay);
+  const hasInstruction = Boolean(value.instruction?.trim());
+  if (!hasInstruction && !hasStructuredFields) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["instruction"],
+      message: "请填写发布计划。",
+    });
+  }
 });
 
 const submitPlanSchema = z.object({

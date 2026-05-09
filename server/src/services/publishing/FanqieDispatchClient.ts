@@ -302,7 +302,7 @@ export class FanqieDispatchClient {
     requestId: string;
     publishOptions: {
       useAi?: boolean;
-      timerTime: string;
+      timerTime?: string;
       dailyWordLimit?: number;
     };
     chapters: FanqieDispatchPublishChapter[];

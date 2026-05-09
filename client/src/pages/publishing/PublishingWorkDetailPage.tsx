@@ -54,6 +54,17 @@ function parsePositiveInt(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function plusOneDate(value?: string | null): string {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const now = new Date();
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    return next.toISOString().slice(0, 10);
+  }
+  const next = new Date(`${value}T00:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next.toISOString().slice(0, 10);
+}
+
 function inferDefaultChapterCount(input: {
   completedChapterCount: number;
   publishedChapterCount: number;
@@ -97,7 +108,10 @@ export default function PublishingWorkDetailPage() {
   const params = useParams<{ bindingId: string }>();
   const bindingId = params.bindingId ?? "";
   const queryClient = useQueryClient();
-  const [instruction, setInstruction] = useState("每日 08:00 发布 2 章节");
+  const [useTimer, setUseTimer] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [publishTime, setPublishTime] = useState("08:00");
+  const [chaptersPerDayText, setChaptersPerDayText] = useState("2");
   const [chapterCountText, setChapterCountText] = useState("1");
   const [mode, setMode] = useState<PublishMode>("draft");
 
@@ -134,8 +148,17 @@ export default function PublishingWorkDetailPage() {
   );
 
   useEffect(() => {
-    setChapterCountText(String(recommendedChapterCount));
-  }, [recommendedChapterCount, bindingId]);
+    setChapterCountText(useTimer ? String(recommendedChapterCount) : "1");
+  }, [recommendedChapterCount, bindingId, useTimer]);
+
+  useEffect(() => {
+    const nextStartDate = plusOneDate(
+      activePlan?.resolvedSchedule.useTimer
+        ? activePlan.resolvedSchedule.startDate ?? null
+        : null,
+    );
+    setStartDate(nextStartDate);
+  }, [activePlan?.resolvedSchedule.startDate, activePlan?.resolvedSchedule.useTimer, bindingId]);
 
   useEffect(() => {
     if (activePlan?.mode) {
@@ -174,10 +197,21 @@ export default function PublishingWorkDetailPage() {
       if (!chapterCount) {
         throw new Error("请填写参与发布章节数量。");
       }
+      const chaptersPerDay = parsePositiveInt(chaptersPerDayText);
+      if (useTimer && !chaptersPerDay) {
+        throw new Error("请填写每日发布章节数。");
+      }
       return generatePublishingPlan(bindingId, {
-        instruction,
         chapterCount,
         mode,
+        useTimer,
+        ...(useTimer ? {
+          startDate,
+          publishTime,
+          chaptersPerDay: chaptersPerDay ?? 1,
+        } : {
+          chaptersPerDay: chapterCount,
+        }),
       });
     },
     onSuccess: async () => {
@@ -319,16 +353,55 @@ export default function PublishingWorkDetailPage() {
             </Button>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_180px]">
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="publishing-instruction">发布节奏</label>
-              <textarea
-                id="publishing-instruction"
-                className="min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm"
-                value={instruction}
-                onChange={(event) => setInstruction(event.target.value)}
-                placeholder="每日 08:00 发布 2 章节"
-              />
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">计划方式</label>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant={useTimer ? "outline" : "default"} onClick={() => setUseTimer(false)}>
+                    立即发布
+                  </Button>
+                  <Button type="button" variant={useTimer ? "default" : "outline"} onClick={() => setUseTimer(true)}>
+                    定时发布
+                  </Button>
+                </div>
+              </div>
+              {useTimer ? (
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="publishing-start-date">起始日期</label>
+                    <Input
+                      id="publishing-start-date"
+                      type="date"
+                      value={startDate}
+                      onChange={(event) => setStartDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="publishing-time">发布时间</label>
+                    <Input
+                      id="publishing-time"
+                      type="time"
+                      value={publishTime}
+                      onChange={(event) => setPublishTime(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium" htmlFor="publishing-chapters-per-day">每日发布章节数</label>
+                    <Input
+                      id="publishing-chapters-per-day"
+                      type="number"
+                      min={1}
+                      value={chaptersPerDayText}
+                      onChange={(event) => setChaptersPerDayText(event.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  当前按立即发布生成计划。开始发布后会按顺序逐章立即提交，不带定时时间。
+                </div>
+              )}
             </div>
             <div className="space-y-3">
               <div className="space-y-2">
@@ -391,7 +464,9 @@ export default function PublishingWorkDetailPage() {
             <h2 className="text-base font-medium">当前计划</h2>
             <p className="text-sm text-muted-foreground">
               {activePlan
-                ? `${activePlan.resolvedSchedule.startDate} 起，每天 ${activePlan.resolvedSchedule.publishTime} 提交 ${activePlan.resolvedSchedule.chaptersPerDay} 章`
+                ? (activePlan.resolvedSchedule.useTimer
+                  ? `${activePlan.resolvedSchedule.startDate} 起，每天 ${activePlan.resolvedSchedule.publishTime} 提交 ${activePlan.resolvedSchedule.chaptersPerDay} 章`
+                  : `立即发布，按顺序提交 ${activePlan.items.length} 章`)
                 : "生成发布时间表后，系统会按顺序准备逐章提交列表。"}
             </p>
             {activePlan ? (

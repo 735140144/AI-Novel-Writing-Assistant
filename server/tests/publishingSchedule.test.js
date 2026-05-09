@@ -6,7 +6,9 @@ const {
   buildChapterPublishScheduleFromOffset,
   continueScheduleAfterTime,
   formatPlannedPublishTime,
+  formatImmediatePublishTime,
   groupPublishPlanItemsByPlannedTime,
+  isImmediatePublishTime,
   normalizeStructuredSchedule,
   resolveContinuationStartIndexOffset,
 } = require("../dist/services/publishing/publishingSchedule.js");
@@ -26,6 +28,7 @@ const {
   hasBlockingPlanSubmissionEvidence,
 } = require("../dist/services/publishing/publishingPlanDeletion.js");
 const { shouldSubmitPlanItem } = require("../dist/services/publishing/publishingPlanSubmission.js");
+const { buildPublishOptions } = require("../dist/services/publishing/publishingDispatchPayloads.js");
 const { getRegisteredPromptAsset } = require("../dist/prompting/registry.js");
 
 test("publishing schedule assigns two chapters to each daily planned time", () => {
@@ -95,6 +98,13 @@ test("publishing timer format is normalized and rejects compact dates", () => {
     ]),
     /YYYY-MM-DD HH:mm/,
   );
+});
+
+test("publishing immediate mode uses a stable immediate marker", () => {
+  const immediateTime = formatImmediatePublishTime();
+  assert.equal(immediateTime, "immediate");
+  assert.equal(isImmediatePublishTime(immediateTime), true);
+  assert.equal(isImmediatePublishTime("2026-05-09 08:00"), false);
 });
 
 test("publishing continuation skips existing chapters and continues from occupied schedule slots", () => {
@@ -397,6 +407,32 @@ test("publishing only submits plan items that still need local processing", () =
   assert.equal(shouldSubmitPlanItem({ status: "submitting" }), false);
   assert.equal(shouldSubmitPlanItem({ status: "draft_box" }), false);
   assert.equal(shouldSubmitPlanItem({ status: "published" }), false);
+});
+
+test("publishing dispatch payload omits timerTime for immediate publish items", () => {
+  assert.deepEqual(
+    buildPublishOptions({
+      plannedPublishTime: "immediate",
+      useAi: true,
+      dailyWordLimit: 20000,
+    }),
+    {
+      useAi: true,
+      dailyWordLimit: 20000,
+    },
+  );
+  assert.deepEqual(
+    buildPublishOptions({
+      plannedPublishTime: "2026-05-09 08:00",
+      useAi: true,
+      dailyWordLimit: 20000,
+    }),
+    {
+      useAi: true,
+      timerTime: "2026-05-09 08:00",
+      dailyWordLimit: 20000,
+    },
+  );
 });
 
 test("publishing known-book option key is stable for dropdown selection and dedupe", () => {

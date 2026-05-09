@@ -41,6 +41,7 @@ export interface BuildPublishScheduleFromOffsetInput {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 const PLANNED_TIME_PATTERN = /^\d{4}-\d{2}-\d{2} ([01]\d|2[0-3]):[0-5]\d$/;
+const IMMEDIATE_PLANNED_TIME = "immediate";
 
 function assertDateString(value: string, label: string): void {
   if (!DATE_PATTERN.test(value)) {
@@ -59,6 +60,14 @@ function normalizePublishTime(value: string): string {
     throw new Error("发布时间必须使用 HH:mm 格式。");
   }
   return `${match[1].padStart(2, "0")}:${match[2]}`;
+}
+
+export function formatImmediatePublishTime(): string {
+  return IMMEDIATE_PLANNED_TIME;
+}
+
+export function isImmediatePublishTime(value: string | null | undefined): boolean {
+  return (value?.trim() ?? "") === IMMEDIATE_PLANNED_TIME;
 }
 
 function addDays(dateString: string, days: number): string {
@@ -105,11 +114,14 @@ export function getNextDateStringInTimeZone(now = new Date(), timeZone = "Asia/S
 
 export function normalizeStructuredSchedule(input: NormalizeStructuredScheduleInput): PublishingResolvedSchedule {
   const timezone = input.structured.timezone?.trim() || input.timezone?.trim() || "Asia/Shanghai";
-  const startDate = input.structured.startDate?.trim() || input.defaultStartDate;
+  const useTimer = input.structured.useTimer !== false;
+  const startDate = useTimer ? (input.structured.startDate?.trim() || input.defaultStartDate) : null;
   assertDateString(input.defaultStartDate, "默认起始日期");
-  assertDateString(startDate, "起始日期");
+  if (useTimer) {
+    assertDateString(startDate ?? "", "起始日期");
+  }
 
-  const publishTime = normalizePublishTime(input.structured.publishTime);
+  const publishTime = useTimer ? normalizePublishTime(input.structured.publishTime?.trim() || "08:00") : null;
   const chaptersPerDay = Math.max(1, Math.floor(input.structured.chaptersPerDay));
   if (!Number.isFinite(chaptersPerDay) || chaptersPerDay > 50) {
     throw new Error("每日发布章节数必须在 1 到 50 之间。");
@@ -134,6 +146,7 @@ export function normalizeStructuredSchedule(input: NormalizeStructuredScheduleIn
     startChapterOrder,
     endChapterOrder,
     timezone,
+    useTimer,
     assumptions: input.structured.assumptions?.map((item) => item.trim()).filter(Boolean) ?? [],
   };
 }
@@ -165,14 +178,25 @@ export function buildChapterPublishScheduleFromOffset(
 
   return selectedChapters.map((chapter, index) => {
     const absoluteIndex = index + Math.max(0, Math.floor(input.startIndexOffset ?? 0));
+    if (!input.schedule.useTimer) {
+      return {
+        chapterId: chapter.id,
+        chapterOrder: chapter.order,
+        chapterTitle: chapter.title.trim() || `第${chapter.order}章`,
+        volumeTitle: chapter.volumeTitle ?? null,
+        plannedPublishTime: formatImmediatePublishTime(),
+      };
+    }
+    const startDate = input.schedule.startDate ?? "";
+    const publishTime = input.schedule.publishTime ?? "08:00";
     const dayOffset = Math.floor(absoluteIndex / input.schedule.chaptersPerDay);
-    const plannedDate = addDays(input.schedule.startDate, dayOffset);
+    const plannedDate = addDays(startDate, dayOffset);
     return {
       chapterId: chapter.id,
       chapterOrder: chapter.order,
       chapterTitle: chapter.title.trim() || `第${chapter.order}章`,
       volumeTitle: chapter.volumeTitle ?? null,
-      plannedPublishTime: formatPlannedPublishTime(plannedDate, input.schedule.publishTime),
+      plannedPublishTime: formatPlannedPublishTime(plannedDate, publishTime),
     };
   });
 }
@@ -182,7 +206,7 @@ export function groupPublishPlanItemsByPlannedTime<T extends { plannedPublishTim
 ): Array<PublishPlanTimeGroup<T>> {
   const groups = new Map<string, T[]>();
   for (const item of items) {
-    if (!PLANNED_TIME_PATTERN.test(item.plannedPublishTime)) {
+    if (!isImmediatePublishTime(item.plannedPublishTime) && !PLANNED_TIME_PATTERN.test(item.plannedPublishTime)) {
       throw new Error("计划发布时间必须使用 YYYY-MM-DD HH:mm 格式。");
     }
     const existing = groups.get(item.plannedPublishTime);
@@ -205,6 +229,9 @@ export function continueScheduleAfterTime(input: {
   occupiedPlannedTime?: string | null;
   occupiedItemCount?: number;
 }): PublishingResolvedSchedule {
+  if (!input.baseSchedule.useTimer) {
+    return input.baseSchedule;
+  }
   const occupiedTime = input.occupiedPlannedTime?.trim();
   const occupiedCount = Math.max(0, Math.floor(input.occupiedItemCount ?? 0));
   if (!occupiedTime || occupiedCount <= 0) {
@@ -216,8 +243,9 @@ export function continueScheduleAfterTime(input: {
   const [occupiedDate] = occupiedTime.split(" ");
   const occupiedDayOffset = Math.floor((occupiedCount - 1) / input.baseSchedule.chaptersPerDay);
   const derivedStartDate = addDays(occupiedDate, -occupiedDayOffset);
-  const startDate = input.baseSchedule.startDate > derivedStartDate
-    ? input.baseSchedule.startDate
+  const currentStartDate = input.baseSchedule.startDate ?? derivedStartDate;
+  const startDate = currentStartDate > derivedStartDate
+    ? currentStartDate
     : derivedStartDate;
   return {
     ...input.baseSchedule,
@@ -229,6 +257,9 @@ export function resolveContinuationStartIndexOffset(input: {
   schedule: PublishingResolvedSchedule;
   occupiedPlannedTime?: string | null;
 }): number {
+  if (!input.schedule.useTimer) {
+    return 0;
+  }
   const occupiedTime = input.occupiedPlannedTime?.trim();
   if (!occupiedTime) {
     return 0;
@@ -240,11 +271,13 @@ export function resolveContinuationStartIndexOffset(input: {
   if (!occupiedDate || !occupiedClock) {
     throw new Error("已有计划时间格式无效。");
   }
-  const daysFromStart = diffDays(input.schedule.startDate, occupiedDate);
+  const startDate = input.schedule.startDate ?? occupiedDate;
+  const publishTime = input.schedule.publishTime ?? "08:00";
+  const daysFromStart = diffDays(startDate, occupiedDate);
   if (daysFromStart < 0) {
     return 0;
   }
-  const needsNextWindow = occupiedClock >= input.schedule.publishTime;
+  const needsNextWindow = occupiedClock >= publishTime;
   const windowIndex = daysFromStart + (needsNextWindow ? 1 : 0);
   return Math.max(0, windowIndex) * input.schedule.chaptersPerDay;
 }
