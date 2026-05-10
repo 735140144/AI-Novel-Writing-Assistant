@@ -193,7 +193,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "border-r bg-muted/20 p-3 transition-[width] duration-200",
+        "flex h-full flex-col overflow-hidden border-r bg-muted/20 p-3 transition-[width] duration-200",
         collapsed ? "w-[72px]" : "w-64",
       )}
     >
@@ -211,7 +211,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </Button>
       </div>
 
-      <nav className="space-y-4">
+      <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
         {navGroups.map((group) => (
           <div key={group.title} className="space-y-1">
             {!collapsed ? (
@@ -236,7 +236,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         isActive
                           ? "bg-accent/90 font-semibold text-accent-foreground"
                           : "text-foreground hover:bg-accent hover:text-accent-foreground",
-                        isNovelEntry && !collapsed && (isActive ? "ring-1 ring-primary/20" : "bg-primary/5 hover:bg-primary/10"),
+                        isNovelEntry && !collapsed && isActive && "ring-1 ring-primary/20",
                       )}
                     >
                       <span
@@ -251,12 +251,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         className={cn(
                           "h-[18px] w-[18px] shrink-0",
                           collapsed ? "mx-auto" : "mr-3",
-                          isNovelEntry && "text-primary",
+                          isNovelEntry && isActive && "text-primary",
                         )}
                       />
 
                       {!collapsed ? (
-                        <span className={cn("truncate", isNovelEntry && "font-semibold")}>
+                        <span className={cn("truncate", isNovelEntry && isActive && "font-semibold")}>
                           {item.label}
                         </span>
                       ) : null}

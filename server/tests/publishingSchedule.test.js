@@ -628,6 +628,49 @@ test("publishing remote progress ignores placeholder drafts and keeps published 
   assert.equal(progress.effectiveDraftCount, 1);
 });
 
+test("publishing remote progress ignores unnamed placeholder drafts without order or timer", () => {
+  const progress = getEffectiveRemoteProgressRows({
+    publishedChapters: [],
+    draftChapters: [
+      {
+        source: "draft",
+        title: "未命名草稿",
+        chapterName: "未命名草稿",
+        itemId: "draft-placeholder",
+      },
+    ],
+    effectiveDraftChapters: [
+      {
+        source: "draft",
+        title: "未命名草稿",
+        chapterName: "未命名草稿",
+        itemId: "draft-placeholder",
+      },
+    ],
+  });
+
+  assert.deepEqual(progress.effectiveDraftOrders, new Set());
+  assert.deepEqual(progress.effectiveDraftNames, new Set());
+  assert.equal(progress.effectiveDraftCount, 0);
+});
+
+test("remote publishing sync still upgrades queued dispatch telemetry for already completed items", () => {
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "queued",
+      itemStatus: "published",
+    }),
+    "completed",
+  );
+  assert.equal(
+    reconcileDispatchJobStatusFromRemoteItemStatus({
+      dispatchStatus: "queued",
+      itemStatus: "draft_box",
+    }),
+    "completed",
+  );
+});
+
 test("publishing remote progress treats max published order as the published count floor", () => {
   const progress = getEffectiveRemoteProgressRows({
     publishedChapters: [

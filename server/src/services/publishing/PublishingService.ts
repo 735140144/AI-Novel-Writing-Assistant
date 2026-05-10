@@ -419,6 +419,32 @@ export class PublishingService {
       }
 
       if (!nextStatus || nextStatus === item.status) {
+        const reconciledDispatchStatus = reconcileDispatchJobStatusFromRemoteItemStatus({
+          dispatchStatus: item.dispatchStatus,
+          itemStatus: item.status,
+        });
+        if (
+          item.dispatchJobId
+          && reconciledDispatchStatus
+          && reconciledDispatchStatus !== item.dispatchStatus
+        ) {
+          await prisma.publishDispatchJob.update({
+            where: { id: item.dispatchJobId },
+            data: {
+              status: reconciledDispatchStatus,
+              lastError: null,
+              completedAt: reconciledDispatchStatus === PublishDispatchJobStatus.completed ? new Date() : undefined,
+            },
+          });
+          await prisma.publishPlanItem.update({
+            where: { id: item.id },
+            data: {
+              dispatchStatus: reconciledDispatchStatus,
+              lastError: null,
+            },
+          });
+          touchedPlanIds.add(item.planId);
+        }
         continue;
       }
 

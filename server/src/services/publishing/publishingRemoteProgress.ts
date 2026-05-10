@@ -110,6 +110,39 @@ function buildNameSet(rows: Array<{ chapterName: string; title: string }>): Set<
   return names;
 }
 
+function isPlaceholderDraftRow(row: {
+  source?: string | null;
+  order?: number | null;
+  chapterName?: string | null;
+  title?: string | null;
+  timerTime?: string | null;
+}): boolean {
+  if (row.source !== "draft") {
+    return false;
+  }
+  if (typeof row.order === "number" && Number.isFinite(row.order)) {
+    return false;
+  }
+  if (normalizeRemoteScheduledPublishTime(row.timerTime)) {
+    return false;
+  }
+  const normalizedName = normalizeChapterName({
+    chapterName: row.chapterName ?? "",
+    title: row.title ?? "",
+  });
+  return normalizedName === "未命名草稿";
+}
+
+function filterEffectiveDraftRows<T extends {
+  source?: string | null;
+  order?: number | null;
+  chapterName?: string | null;
+  title?: string | null;
+  timerTime?: string | null;
+}>(rows: T[]): T[] {
+  return rows.filter((row) => !isPlaceholderDraftRow(row));
+}
+
 function resolveMaxOrder(rows: Array<{ order?: number | null }>): number {
   let maxOrder = 0;
   for (const row of rows) {
@@ -315,13 +348,14 @@ export function getEffectiveRemoteProgressRows(
     "bookId" | "bookTitle" | "publishedChapters" | "draftChapters" | "effectiveDraftChapters"
   > | FanqieDispatchBookProgress,
 ) {
+  const effectiveDraftRows = filterEffectiveDraftRows(progress.effectiveDraftChapters);
   const publishedMaxOrder = resolveMaxOrder(progress.publishedChapters);
   return {
     publishedOrders: buildPublishedOrderSet(progress.publishedChapters),
     publishedNames: buildNameSet(progress.publishedChapters),
-    effectiveDraftOrders: buildOrderSet(progress.effectiveDraftChapters),
-    effectiveDraftNames: buildNameSet(progress.effectiveDraftChapters),
+    effectiveDraftOrders: buildOrderSet(effectiveDraftRows),
+    effectiveDraftNames: buildNameSet(effectiveDraftRows),
     publishedCount: Math.max(progress.publishedChapters.length, publishedMaxOrder),
-    effectiveDraftCount: progress.effectiveDraftChapters.length,
+    effectiveDraftCount: effectiveDraftRows.length,
   };
 }
